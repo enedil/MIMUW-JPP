@@ -1,0 +1,23 @@
+  Na 15 punktów
+X  01 (trzy typy)
+X  02 (literały, arytmetyka, porównania)
+X  03 (zmienne, przypisanie)
+X  04 (print)
+X  05 (while, if)
+X  06 (funkcje lub procedury, rekurencja)
+X  07 (przez zmienną / przez wartość / in/out) - zmienna + wartość
+-  08 (zmienne read-only i pętla for)
+  Na 20 punktów
+X  09 (przesłanianie i statyczne wiązanie)
+X  10 (obsługa błędów wykonania)
+X  11 (funkcje zwracające wartość)
+  Na 30 punktów
+X  12 (4) (statyczne typowanie)
+  13 (2) (funkcje zagnieżdżone ze statycznym wiązaniem)
+  14 (1) (rekordy/tablice/listy)
+X  15 (2) (krotki z przypisaniem)
+X  16 (1) (break, continue)
+X  17 (4) (funkcje wyższego rzędu, anonimowe, domknięcia)
+X  18 (3) (generatory)
+
+Razem: 30 (34?)
