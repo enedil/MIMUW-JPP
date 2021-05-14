@@ -10,8 +10,8 @@ import Debug.Trace
 
 import qualified AbsCerber as S
 
-type IsInLoop = Bool
 type Pos = S.BNFC'Position
+type IsInLoop = Bool
 
 chck :: S.Program -> Except Pos ()
 chck (S.PProgram _ fns) = 
