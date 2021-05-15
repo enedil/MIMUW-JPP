@@ -15,5 +15,5 @@ run :: String -> IO ()
 run text = do
     case pProgram $ myLexer text of
         Left str -> putStrLn $ show str
-        Right prog -> putStrLn (show prog) >> putStrLn (show (TypeChecker.chck prog))
+        Right prog -> putStrLn (show prog) >> putStrLn (show (TypeChecker.typeCheckProgram prog))
         

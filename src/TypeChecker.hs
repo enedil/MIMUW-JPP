@@ -5,9 +5,11 @@ import Control.Monad.Reader --(ReaderT, ask, runReader, local)
 --import Control.Monad.Identity
 --import Data.Maybe
 --import Control.Monad.Trans.Identity
+import Data.Functor.Identity
 import Control.Monad.Trans.Except
 --import Control.Monad.Trans.Reader
 import Control.Monad.Except
+import Control.Monad.Fail
 import qualified Data.Map as M
 --import Text.Printf (printf)
 import Debug.Trace
@@ -18,86 +20,95 @@ type Pos = S.BNFC'Position
 
 returnRegister :: String
 returnRegister = "return"
-type TypeEnv = M.Map String S.Type
+type TypeEnv = M.Map String Type
 
 type TypeCheckerMonad a = ExceptT String (Reader TypeEnv) a
 
-data Type = TInt | TStr | TBool | TVoid | Fun Type [Type] | Tuple [Type]
+data Type = TInt | TStr | TBool | TVoid | TFun Type [Type] | TTuple [Type] | TRef Type deriving (Eq, Ord)
+instance Show Type where
+    show = typeShow
+
+typeOfStype :: S.Type -> Type
+typeOfStype (S.Int _) = TInt
+typeOfStype (S.Str _) = TStr
+typeOfStype (S.Bool _) = TBool
+typeOfStype (S.Void _) = TVoid
+typeOfStype (S.Fun _ ret args) = TFun (typeOfStype ret) (map typeOfStype args)
+typeOfStype (S.Tuple _ elems) = TTuple (map typeOfStype elems)
 
 formatError :: forall a. Pos -> String -> TypeCheckerMonad a
 formatError (Just (line, col)) arg = throwE $ (show line) ++ ":" ++ (show col) ++ ": " ++ arg
 formatError Nothing arg = throwE $ "(unknown): " ++ arg
 
-cmptypes :: S.Type -> S.Type -> Pos -> String -> TypeCheckerMonad ()
+cmptypes :: Type -> Type -> Pos -> String -> TypeCheckerMonad ()
 cmptypes t1 t2 pos msg = if t1 == t2 then return () else formatError pos msg
 
-typeShow :: S.Type -> String
-typeShow = show
+typeShow :: Type -> String
+typeShow TInt = "int"
+typeShow TStr = "str"
+typeShow TBool = "bool"
+typeShow TVoid = "void"
+typeShow (TFun ret args) = "function<" ++ (typeShow ret) ++ (show (map typeShow args)) ++ ">"
+typeShow (TTuple elems) = "tuple<" ++ (show (map typeShow elems)) ++ ">"
 
-typeOf :: S.Expr -> TypeEnv -> Either String S.Type
+typeOf :: S.Expr -> TypeEnv -> Either String Type
 typeOf e initEnv = let ty = runReader (runExceptT (typeOf_ e)) initEnv in (trace ("expr=" ++ (show e) ++ ", type=" ++ (show ty)) ty)
 
-typeOf_ :: S.Expr -> TypeCheckerMonad S.Type
+expecttype :: Type -> Type -> Type -> Pos -> String -> TypeCheckerMonad Type
+expecttype expected input rettype pos err = if expected == input then return rettype else formatError pos err
+expecttype2 :: Type -> Type -> Type -> Type -> Pos -> String -> TypeCheckerMonad Type
+expecttype2 expected input1 input2 rettype pos err = if expected == input1 && expected == input2 then return rettype else formatError pos err
+
+typeOf' :: S.Expr -> TypeCheckerMonad Type
+typeOf' x = trace ("expr=" ++ (show x) ++ "\n") $ typeOf_ x
+
+typeOf_ :: S.Expr -> TypeCheckerMonad Type
 typeOf_ e@(S.EVar _ (S.Ident name)) = do
     type_ <- asks (M.lookup name)
     case type_ of
         Just t -> return t
         Nothing -> formatError (S.hasPosition e) ("Variable or function not in scope: " ++ name)
 
-typeOf_ e@(S.ELitInt _ _) = return $ S.Int (S.hasPosition e)
-typeOf_ e@(S.ELitTrue _) = return $ S.Bool (S.hasPosition e)
-typeOf_ e@(S.ELitFalse _) = return $ S.Bool (S.hasPosition e)
-typeOf_ e@(S.EString _ _) = return $ S.Str (S.hasPosition e)
+typeOf_ e@(S.ELitInt _ _) = return TInt
+typeOf_ e@(S.ELitTrue _) = return TBool 
+typeOf_ e@(S.ELitFalse _) = return TBool
+typeOf_ e@(S.EString _ _) = return TStr
 typeOf_ e@(S.Neg _ e_in) = do
-    type_in <- typeOf_ e_in
-    case type_in of
-        S.Int _ -> return $ S.Int (S.hasPosition e)
-        _ -> formatError (S.hasPosition e) ("cannot negate: " ++ (typeShow type_in))
+    type_in <- typeOf' e_in
+    expecttype TInt type_in TInt (S.hasPosition e) ("cannot negate: " ++ (typeShow type_in))
 typeOf_ e@(S.Not _ e_in) = do
-    type_in <- typeOf_ e_in
-    case type_in of
-        S.Bool _ -> return $ S.Bool (S.hasPosition e)
-        _ -> formatError (S.hasPosition e) ("cannot invert: " ++ (typeShow type_in))
+    type_in <- typeOf' e_in
+    expecttype TInt type_in TInt (S.hasPosition e) ("cannot invert: " ++ (typeShow type_in))
 typeOf_ e@(S.EMul _ e1 _ e2) = do
-    type1 <- typeOf_ e1
-    type2 <- typeOf_ e2
-    case (type1, type2) of
-        (S.Int _, S.Int _) -> return $ S.Int (S.hasPosition e)
-        _ -> formatError (S.hasPosition e) ("cannot multiply/divide: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
+    type1 <- typeOf' e1
+    type2 <- typeOf' e2
+    expecttype2 TInt type1 type2 TInt (S.hasPosition e) ("cannot multiply/divide: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
 typeOf_ e@(S.EAdd _ e1 _ e2) = do
-    type1 <- typeOf_ e1
-    type2 <- typeOf_ e2
-    case (type1, type2) of
-        (S.Int _, S.Int _) -> return $ S.Int (S.hasPosition e)
-        _ -> formatError (S.hasPosition e) ("cannot add/subtract: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
+    type1 <- typeOf' e1
+    type2 <- typeOf' e2
+    expecttype2 TInt type1 type2 TInt (S.hasPosition e) ("cannot add/subtract: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
 typeOf_ e@(S.ERel _ e1 _ e2) = do
-    type1 <- typeOf_ e1
-    type2 <- typeOf_ e2
-    case (type1, type2) of
-        (S.Int _, S.Int _) -> return $ S.Bool (S.hasPosition e)
-        _ -> formatError (S.hasPosition e) ("cannot compare: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
+    type1 <- typeOf' e1
+    type2 <- typeOf' e2
+    expecttype2 TInt type1 type2 TBool (S.hasPosition e) ("cannot compare: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
 typeOf_ e@(S.EAnd _ e1 e2) = do
-    type1 <- typeOf_ e1
-    type2 <- typeOf_ e2
-    case (type1, type2) of
-        (S.Bool _, S.Bool _) -> return $ S.Bool (S.hasPosition e)
-        _ -> formatError (S.hasPosition e) ("cannot and: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
+    type1 <- typeOf' e1
+    type2 <- typeOf' e2
+    expecttype2 TBool type1 type2 TBool (S.hasPosition e) ("cannot and: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
 typeOf_ e@(S.EOr _ e1 e2) = do
-    type1 <- typeOf_ e1
-    type2 <- typeOf_ e2
-    case (type1, type2) of
-        (S.Bool _, S.Bool _) -> return $ S.Bool (S.hasPosition e)
-        _ -> formatError (S.hasPosition e) ("cannot or: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
+    type1 <- typeOf' e1
+    type2 <- typeOf' e2
+    expecttype2 TBool type1 type2 TBool (S.hasPosition e) ("cannot or: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
 typeOf_ e@(S.ETuple _ exprs) = do
-    types <- mapM typeOf_ exprs
-    return $ S.Tuple (S.hasPosition e) types
+    types <- mapM typeOf' exprs
+    return $ TTuple types
 typeOf_ e@(S.EApp _ fun args) = do
-    fun_type <- typeOf_ fun 
+    fun_type <- typeOf' fun 
     real_arg_types <- mapM typeOf_ args
     case fun_type of
-        S.Fun _ ret_type arg_types -> 
+        TFun ret_type arg_types -> 
             if real_arg_types == arg_types 
-            then return $ ret_type 
+            then return ret_type 
             else formatError (S.hasPosition e) ("cannot call: " ++ (show fun) ++ " with " ++ (concat (map typeShow real_arg_types)))
         _ -> formatError (S.hasPosition e) ("not callable:" ++ (show fun))
 
@@ -111,10 +122,13 @@ typeCheckStmt st@(S.Ass _ (S.Ident ident) expr) = do
             cmptypes id_t expr_t (S.hasPosition st) $ "can't assign type " ++ (typeShow expr_t) ++ " to variable of type " ++ (typeShow id_t) 
         (Nothing, Right _) -> formatError (S.hasPosition st) $ "undefined variable " ++ ident
         (_, Left err) -> formatError (S.hasPosition st) err
+
+typeCheckStmt st@(S.Decl _ type_ []) = return ()
+typeCheckStmt st@(S.Decl _ type_ (a:b)) = return ()
 typeCheckStmt st@(S.VRet _ ) = do
     env <- ask
     case M.lookup returnRegister env of
-        Just (S.Void _) -> return ()
+        Just TVoid -> return ()
         _ -> formatError (S.hasPosition st) $ "cannot return void from nonvoid function"
 typeCheckStmt st@(S.Ret _ e) = do
     env <- ask
@@ -125,19 +139,18 @@ typeCheckStmt st@(S.Ret _ e) = do
         (_, Left err) -> formatError (S.hasPosition st) err
 
 
-checktype :: S.Type -> S.Type ->
 
 typeCheckStmt st@(S.Cond _ e s) = do
     env <- ask
     (case typeOf e env of
-        Right (S.Bool _) -> return ()
+        Right TBool -> return ()
         Right _ -> formatError (S.hasPosition st) "condition is not bool"
-        Left err-> formatError (S.hasPosition st) err) >> typeCheckStmt s
+        Left err -> formatError (S.hasPosition st) err) >> typeCheckStmt s
 
 typeCheckStmt st@(S.CondElse _ e s1 s2) = do
     env <- ask
     (case typeOf e env of
-        Right (S.Bool _) -> return ()
+        Right TBool -> return ()
         Right _ -> formatError (S.hasPosition st) "condition is not bool"
         Left err-> formatError (S.hasPosition st) err) >> typeCheckStmt s1 >> typeCheckStmt s2
 
@@ -145,31 +158,48 @@ typeCheckStmt st@(S.SExp _ e) = do
     env <- ask
     case typeOf e env of
         Right _ -> return ()
-        Left err-> formatError (S.hasPosition st) err
+        Left err -> formatError (S.hasPosition st) err
         
 typeCheckStmt st@(S.While _ e s) = do
     env <- ask
     (case typeOf e env of
-        Right (S.Bool _) -> return ()
+        Right TBool -> return ()
         Right _ -> formatError (S.hasPosition st) "condition is not bool"
         Left err -> formatError (S.hasPosition st) err) >> typeCheckStmt s
 
 typeCheckStmt st@(S.While _ e s) = do
     env <- ask
     (case typeOf e env of
-        Right (S.Bool _) -> return ()
+        Right TBool -> return ()
         Right _ -> formatError (S.hasPosition st) "condition is not bool"
         Left err -> formatError (S.hasPosition st) err) >> typeCheckStmt s
 
-typeCheckStmt st@(S.ForIn _ ident e s) = do
-    env <- ask
-    (case typeOf e env of
-        
     
+typeCheckStmt xd = formatError Nothing $ "ajja: " ++ (show xd)
 --typeCheckStmt _ = return ()
+argtype :: S.Arg -> S.Type
+argtype (S.VarArg _ t _) = t
+argtype (S.RefArg _ t _) = t
+
+parseFunctionSig :: S.TopDef -> (String, Type)
+parseFunctionSig (S.FnDef _ rettype (S.Ident ident) args _) = (ident, TFun (typeOfStype rettype) (map (typeOfStype . argtype) args))
+
 
 typeCheckProgram :: S.Program -> Except String ()
-typeCheckProgram prog = undefined
+typeCheckProgram (S.PProgram _ fns) = do
+    let fnsigs = map parseFunctionSig fns in
+        let defs = M.fromList fnsigs in
+            typeCheckProgram_ fns defs (map snd fnsigs)
+
+
+typeCheckProgram_ :: [S.TopDef] -> TypeEnv -> [Type]-> Except String ()
+typeCheckProgram_ [] _ _ = return ()
+typeCheckProgram_ ((S.FnDef pos _ _ _ block):b) env ((TFun rettype _):r) = do
+        case runIdentity (runReaderT (runExceptT (typeCheckStmt (S.BStmt pos block))) env') of
+            Left err -> throwE err
+            Right _ -> typeCheckProgram_ b env r
+    where env' = M.insert returnRegister rettype env
+    
 
 chck :: S.Program -> Except Pos ()
 chck (S.PProgram _ fns) = 
