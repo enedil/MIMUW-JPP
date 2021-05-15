@@ -15,14 +15,21 @@ import Debug.Trace
 import qualified AbsCerber as S
 
 type Pos = S.BNFC'Position
+
+returnRegister :: String
+returnRegister = "return"
 type TypeEnv = M.Map String S.Type
 
 type TypeCheckerMonad a = ExceptT String (Reader TypeEnv) a
 
+data Type = TInt | TStr | TBool | TVoid | Fun Type [Type] | Tuple [Type]
 
 formatError :: forall a. Pos -> String -> TypeCheckerMonad a
 formatError (Just (line, col)) arg = throwE $ (show line) ++ ":" ++ (show col) ++ ": " ++ arg
 formatError Nothing arg = throwE $ "(unknown): " ++ arg
+
+cmptypes :: S.Type -> S.Type -> Pos -> String -> TypeCheckerMonad ()
+cmptypes t1 t2 pos msg = if t1 == t2 then return () else formatError pos msg
 
 typeShow :: S.Type -> String
 typeShow = show
@@ -95,19 +102,74 @@ typeOf_ e@(S.EApp _ fun args) = do
         _ -> formatError (S.hasPosition e) ("not callable:" ++ (show fun))
 
 typeCheckStmt :: S.Stmt -> TypeCheckerMonad ()
-typeCheckStmt st@(S.BStmt _ (S.BBlock _ [])) = return ()
+typeCheckStmt (S.BStmt _ (S.BBlock _ [])) = return ()
 typeCheckStmt st@(S.BStmt _ (S.BBlock p (a:b))) = typeCheckStmt a >> typeCheckStmt (S.BStmt (S.hasPosition st) (S.BBlock p b))
-typeCheckStmt st@(S.Ass _ (S.Ident id) expr) = do
+typeCheckStmt st@(S.Ass _ (S.Ident ident) expr) = do
     env <- ask
-    case (M.lookup id env, typeOf expr env) of
+    case (M.lookup ident env, typeOf expr env) of
         (Just id_t, Right expr_t) -> 
-            if id_t == expr_t 
-            then return () 
-            else formatError (S.hasPosition st) $ "can't assign type " ++ (typeShow expr_t) ++ " to variable of type " ++ (typeShow id_t) 
-        (_, Right expr_t) -> formatError (S.hasPosition st) $ "undefined variable " ++ id
+            cmptypes id_t expr_t (S.hasPosition st) $ "can't assign type " ++ (typeShow expr_t) ++ " to variable of type " ++ (typeShow id_t) 
+        (Nothing, Right _) -> formatError (S.hasPosition st) $ "undefined variable " ++ ident
         (_, Left err) -> formatError (S.hasPosition st) err
+typeCheckStmt st@(S.VRet _ ) = do
+    env <- ask
+    case M.lookup returnRegister env of
+        Just (S.Void _) -> return ()
+        _ -> formatError (S.hasPosition st) $ "cannot return void from nonvoid function"
+typeCheckStmt st@(S.Ret _ e) = do
+    env <- ask
+    case (M.lookup returnRegister env, typeOf e env) of
+        (Nothing, _) -> formatError (S.hasPosition st) " fatal error: return register not allocated"
+        (Just t, Right e_t) -> 
+            cmptypes t e_t (S.hasPosition st) $ "Cannot return expression of type " ++ (show e_t) ++ " from function with type " ++ (show t)
+        (_, Left err) -> formatError (S.hasPosition st) err
+
+
+checktype :: S.Type -> S.Type ->
+
+typeCheckStmt st@(S.Cond _ e s) = do
+    env <- ask
+    (case typeOf e env of
+        Right (S.Bool _) -> return ()
+        Right _ -> formatError (S.hasPosition st) "condition is not bool"
+        Left err-> formatError (S.hasPosition st) err) >> typeCheckStmt s
+
+typeCheckStmt st@(S.CondElse _ e s1 s2) = do
+    env <- ask
+    (case typeOf e env of
+        Right (S.Bool _) -> return ()
+        Right _ -> formatError (S.hasPosition st) "condition is not bool"
+        Left err-> formatError (S.hasPosition st) err) >> typeCheckStmt s1 >> typeCheckStmt s2
+
+typeCheckStmt st@(S.SExp _ e) = do
+    env <- ask
+    case typeOf e env of
+        Right _ -> return ()
+        Left err-> formatError (S.hasPosition st) err
         
-typeCheckStmt _ = return ()
+typeCheckStmt st@(S.While _ e s) = do
+    env <- ask
+    (case typeOf e env of
+        Right (S.Bool _) -> return ()
+        Right _ -> formatError (S.hasPosition st) "condition is not bool"
+        Left err -> formatError (S.hasPosition st) err) >> typeCheckStmt s
+
+typeCheckStmt st@(S.While _ e s) = do
+    env <- ask
+    (case typeOf e env of
+        Right (S.Bool _) -> return ()
+        Right _ -> formatError (S.hasPosition st) "condition is not bool"
+        Left err -> formatError (S.hasPosition st) err) >> typeCheckStmt s
+
+typeCheckStmt st@(S.ForIn _ ident e s) = do
+    env <- ask
+    (case typeOf e env of
+        
+    
+--typeCheckStmt _ = return ()
+
+typeCheckProgram :: S.Program -> Except String ()
+typeCheckProgram prog = undefined
 
 chck :: S.Program -> Except Pos ()
 chck (S.PProgram _ fns) = 
