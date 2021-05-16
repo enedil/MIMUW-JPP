@@ -34,7 +34,9 @@ typeOfStype (S.Str _) = TStr
 typeOfStype (S.Bool _) = TBool
 typeOfStype (S.Void _) = TVoid
 typeOfStype (S.Fun _ ret args) = TFun (typeOfStype ret) (map typeOfStype args)
+typeOfStype (S.Function _ (ret:args)) = TFun (typeOfStype ret) (map typeOfStype args)
 typeOfStype (S.Tuple _ elems) = TTuple (map typeOfStype elems)
+typeOfStype x = (trace (show x) undefined)
 
 formatError :: forall a. Pos -> String -> TypeCheckerMonad a
 formatError (Just (line, col)) arg = throwE $ (show line) ++ ":" ++ (show col) ++ ": " ++ arg
@@ -112,9 +114,39 @@ typeOf_ e@(S.EApp _ fun args) = do
             else formatError (S.hasPosition e) ("cannot call: " ++ (show fun) ++ " with " ++ (concat (map typeShow real_arg_types)))
         _ -> formatError (S.hasPosition e) ("not callable:" ++ (show fun))
 
+
+getdeclarations :: S.Block -> TypeEnv -> Except String (TypeEnv, S.Block)
+getdeclarations bl@(S.BBlock _ declarations) env =
+    let (decls, nondecls) = (filter isdecl declarations, join $ fmap decltoass declarations) in
+        case runIdentity (runExceptT (foldM decltoenv env decls)) of
+            Left err -> throwE err
+            Right env_ -> return (env_, (S.BBlock (S.hasPosition bl) nondecls))
+    where
+        isdecl :: S.Stmt -> Bool
+        isdecl (S.Decl _ _ _) = True
+        isdecl _ = False
+        decltoass :: S.Stmt -> [S.Stmt]
+        decltoass (S.Decl _ type_ items) = [(S.Ass pos ident expr) | (S.Init pos ident expr) <- items]
+        decltoass x = [x] 
+        decltoenv :: TypeEnv -> S.Stmt -> Except String TypeEnv
+        decltoenv e (S.Decl _ type_ items) = 
+            case (foldM_ (\_ _ -> return ()) () [typeOf expr env | S.Init _ (S.Ident ident) expr <- items]) of
+                Left err -> throwE err
+                _ -> return $ M.union e (M.fromList $ getvars (typeOfStype type_) items)
+        decltoenv _ _ = undefined
+        getvars :: Type -> [S.Item] -> [(String, Type)]
+        getvars type_ items = [(ident, type_) | S.Init _ (S.Ident ident) _ <- items] ++ [(ident, type_) | S.NoInit _ (S.Ident ident) <- items]
+
 typeCheckStmt :: S.Stmt -> TypeCheckerMonad ()
-typeCheckStmt (S.BStmt _ (S.BBlock _ [])) = return ()
-typeCheckStmt st@(S.BStmt _ (S.BBlock p (a:b))) = typeCheckStmt a >> typeCheckStmt (S.BStmt (S.hasPosition st) (S.BBlock p b))
+typeCheckStmt (S.BStmt _ bl@(S.BBlock _ l)) = do
+    env <- ask
+    case runExcept (getdeclarations bl env) of
+        Right (env', (S.BBlock _ l')) -> local (const env') (f l')
+        Left err -> throwE err
+    where
+        f [] = return ()
+        f (a:b) = typeCheckStmt a >> f b
+
 typeCheckStmt st@(S.Ass _ (S.Ident ident) expr) = do
     env <- ask
     case (M.lookup ident env, typeOf expr env) of
@@ -123,8 +155,8 @@ typeCheckStmt st@(S.Ass _ (S.Ident ident) expr) = do
         (Nothing, Right _) -> formatError (S.hasPosition st) $ "undefined variable " ++ ident
         (_, Left err) -> formatError (S.hasPosition st) err
 
-typeCheckStmt st@(S.Decl _ type_ []) = return ()
-typeCheckStmt st@(S.Decl _ type_ (a:b)) = return ()
+--typeCheckStmt st@(S.Decl _ _ _) = undefined
+
 typeCheckStmt st@(S.VRet _ ) = do
     env <- ask
     case M.lookup returnRegister env of
