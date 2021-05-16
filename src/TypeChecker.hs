@@ -130,7 +130,7 @@ getdeclarations bl@(S.BBlock _ declarations) env =
         decltoass x = [x] 
         decltoenv :: TypeEnv -> S.Stmt -> Except String TypeEnv
         decltoenv e (S.Decl _ type_ items) = 
-            case (foldM_ (\_ _ -> return ()) () [typeOf expr env | S.Init _ (S.Ident ident) expr <- items]) of
+            case (foldM_ (\_ _ -> return ()) () [typeOf expr env | S.Init _ (S.Ident _) expr <- items]) of
                 Left err -> throwE err
                 _ -> return $ M.union e (M.fromList $ getvars (typeOfStype type_) items)
         decltoenv _ _ = undefined
@@ -138,7 +138,7 @@ getdeclarations bl@(S.BBlock _ declarations) env =
         getvars type_ items = [(ident, type_) | S.Init _ (S.Ident ident) _ <- items] ++ [(ident, type_) | S.NoInit _ (S.Ident ident) <- items]
 
 typeCheckStmt :: S.Stmt -> TypeCheckerMonad ()
-typeCheckStmt (S.BStmt _ bl@(S.BBlock _ l)) = do
+typeCheckStmt (S.BStmt _ bl@(S.BBlock _ _)) = do
     env <- ask
     case runExcept (getdeclarations bl env) of
         Right (env', (S.BBlock _ l')) -> local (const env') (f l')
@@ -154,8 +154,6 @@ typeCheckStmt st@(S.Ass _ (S.Ident ident) expr) = do
             cmptypes id_t expr_t (S.hasPosition st) $ "can't assign type " ++ (typeShow expr_t) ++ " to variable of type " ++ (typeShow id_t) 
         (Nothing, Right _) -> formatError (S.hasPosition st) $ "undefined variable " ++ ident
         (_, Left err) -> formatError (S.hasPosition st) err
-
---typeCheckStmt st@(S.Decl _ _ _) = undefined
 
 typeCheckStmt st@(S.VRet _ ) = do
     env <- ask
@@ -199,23 +197,20 @@ typeCheckStmt st@(S.While _ e s) = do
         Right _ -> formatError (S.hasPosition st) "condition is not bool"
         Left err -> formatError (S.hasPosition st) err) >> typeCheckStmt s
 
-typeCheckStmt st@(S.While _ e s) = do
-    env <- ask
-    (case typeOf e env of
-        Right TBool -> return ()
-        Right _ -> formatError (S.hasPosition st) "condition is not bool"
-        Left err -> formatError (S.hasPosition st) err) >> typeCheckStmt s
-
     
 typeCheckStmt xd = formatError Nothing $ "ajja: " ++ (show xd)
 --typeCheckStmt _ = return ()
 argtype :: S.Arg -> S.Type
 argtype (S.VarArg _ t _) = t
 argtype (S.RefArg _ t _) = t
+argname :: S.Arg -> String
+argname (S.VarArg _ _ (S.Ident i)) = i
+argname (S.RefArg _ _ (S.Ident i)) = i
 
 parseFunctionSig :: S.TopDef -> (String, Type)
 parseFunctionSig (S.FnDef _ rettype (S.Ident ident) args _) = (ident, TFun (typeOfStype rettype) (map (typeOfStype . argtype) args))
-
+functionArgNames :: S.TopDef -> [(String, Type)]
+functionArgNames (S.FnDef _ _ _ args _) = zip (map argname args) (map (typeOfStype . argtype) args)
 
 typeCheckProgram :: S.Program -> Except String ()
 typeCheckProgram (S.PProgram _ fns) = do
@@ -224,21 +219,21 @@ typeCheckProgram (S.PProgram _ fns) = do
             typeCheckProgram_ fns defs (map snd fnsigs)
 
 
-typeCheckProgram_ :: [S.TopDef] -> TypeEnv -> [Type]-> Except String ()
+typeCheckProgram_ :: [S.TopDef] -> TypeEnv -> [Type] -> Except String ()
 typeCheckProgram_ [] _ _ = return ()
-typeCheckProgram_ ((S.FnDef pos _ _ _ block):b) env ((TFun rettype _):r) = do
+typeCheckProgram_ (td@(S.FnDef pos _ _ args block):b) env ((TFun rettype _):r) = do
         case runIdentity (runReaderT (runExceptT (typeCheckStmt (S.BStmt pos block))) env') of
             Left err -> throwE err
             Right _ -> typeCheckProgram_ b env r
-    where env' = M.insert returnRegister rettype env
+    where env' = M.union (M.insert returnRegister rettype env) (M.fromList $ functionArgNames td)
     
 
+{-
 chck :: S.Program -> Except Pos ()
 chck (S.PProgram _ fns) = 
     check_is_in_loop_independent [(pos, trace ("\nAaa " ++ (show body) ++ "\n") body) | (S.FnDef pos _ _ _ body) <- fns]
 
 -- TODO: lambdy z break/continue
-
 
 type IsInLoop = Bool
 check_is_in_loop_independent :: [(Pos, S.Block)] -> Except Pos ()
@@ -262,3 +257,4 @@ check_is_in_loop (S.BStmt _ (S.BBlock _ stmts)) = do
     sequence_ (map check_is_in_loop stmts) >>= return
 check_is_in_loop (S.SExp _ e) = return $ trace ("expr:" ++ (show e) ++ "\n") ()
 check_is_in_loop _ = return ()
+-}
