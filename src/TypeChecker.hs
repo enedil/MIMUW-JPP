@@ -11,6 +11,7 @@ import Control.Monad.Trans.Except
 import Control.Monad.Except
 import Control.Monad.Fail
 import qualified Data.Map as M
+import Data.List(intercalate)
 --import Text.Printf (printf)
 import Debug.Trace
 
@@ -20,11 +21,12 @@ type Pos = S.BNFC'Position
 
 returnRegister :: String
 returnRegister = "return"
+inLoopRegister = "while"
 type TypeEnv = M.Map String Type
 
 type TypeCheckerMonad a = ExceptT String (Reader TypeEnv) a
 
-data Type = TInt | TStr | TBool | TVoid | TFun Type [Type] | TTuple [Type] | TRef Type deriving (Eq, Ord)
+data Type = TInt | TStr | TBool | TVoid | TFun Type [Type] | TTuple [Type] deriving (Eq, Ord)
 instance Show Type where
     show = typeShow
 
@@ -50,8 +52,8 @@ typeShow TInt = "int"
 typeShow TStr = "str"
 typeShow TBool = "bool"
 typeShow TVoid = "void"
-typeShow (TFun ret args) = "function<" ++ (typeShow ret) ++ (show (map typeShow args)) ++ ">"
-typeShow (TTuple elems) = "tuple<" ++ (show (map typeShow elems)) ++ ">"
+typeShow (TFun ret args) = "function<" ++ (intercalate "," $ map typeShow (ret: args)) ++ ">"
+typeShow (TTuple elems) = "tuple<" ++ (intercalate "," (map typeShow elems)) ++ ">"
 
 typeOf :: S.Expr -> TypeEnv -> Either String Type
 typeOf e initEnv = let ty = runReader (runExceptT (typeOf_ e)) initEnv in (trace ("expr=" ++ (show e) ++ ", type=" ++ (show ty)) ty)
@@ -126,7 +128,7 @@ getdeclarations bl@(S.BBlock _ declarations) env =
         isdecl (S.Decl _ _ _) = True
         isdecl _ = False
         decltoass :: S.Stmt -> [S.Stmt]
-        decltoass (S.Decl _ type_ items) = [(S.Ass pos ident expr) | (S.Init pos ident expr) <- items]
+        decltoass (S.Decl _ _ items) = [(S.Ass pos ident expr) | (S.Init pos ident expr) <- items]
         decltoass x = [x] 
         decltoenv :: TypeEnv -> S.Stmt -> Except String TypeEnv
         decltoenv e (S.Decl _ type_ items) = 
@@ -172,17 +174,20 @@ typeCheckStmt st@(S.Ret _ e) = do
 
 typeCheckStmt st@(S.Cond _ e s) = do
     env <- ask
-    (case typeOf e env of
+    case typeOf e env of
         Right TBool -> return ()
         Right _ -> formatError (S.hasPosition st) "condition is not bool"
-        Left err -> formatError (S.hasPosition st) err) >> typeCheckStmt s
+        Left err -> formatError (S.hasPosition st) err
+    typeCheckStmt s
 
 typeCheckStmt st@(S.CondElse _ e s1 s2) = do
     env <- ask
-    (case typeOf e env of
+    case typeOf e env of
         Right TBool -> return ()
         Right _ -> formatError (S.hasPosition st) "condition is not bool"
-        Left err-> formatError (S.hasPosition st) err) >> typeCheckStmt s1 >> typeCheckStmt s2
+        Left err-> formatError (S.hasPosition st) err
+    typeCheckStmt s1
+    typeCheckStmt s2
 
 typeCheckStmt st@(S.SExp _ e) = do
     env <- ask
@@ -192,13 +197,24 @@ typeCheckStmt st@(S.SExp _ e) = do
         
 typeCheckStmt st@(S.While _ e s) = do
     env <- ask
-    (case typeOf e env of
+    case typeOf e env of
         Right TBool -> return ()
         Right _ -> formatError (S.hasPosition st) "condition is not bool"
-        Left err -> formatError (S.hasPosition st) err) >> typeCheckStmt s
+        Left err -> formatError (S.hasPosition st) err
+    local (M.insert inLoopRegister TBool) (typeCheckStmt s)
 
-    
+typeCheckStmt st@(S.Break _) = checkIsInLoop st
+typeCheckStmt st@(S.Continue _) = checkIsInLoop st
+
 typeCheckStmt xd = formatError Nothing $ "ajja: " ++ (show xd)
+
+checkIsInLoop :: S.Stmt -> TypeCheckerMonad ()
+checkIsInLoop st = do
+    inLoop <- asks (M.lookup inLoopRegister)
+    case inLoop of
+        Just _ -> return ()
+        _ -> formatError (S.hasPosition st) "break/continue not inside loop"
+    
 --typeCheckStmt _ = return ()
 argtype :: S.Arg -> S.Type
 argtype (S.VarArg _ t _) = t
@@ -212,21 +228,28 @@ parseFunctionSig (S.FnDef _ rettype (S.Ident ident) args _) = (ident, TFun (type
 functionArgNames :: S.TopDef -> [(String, Type)]
 functionArgNames (S.FnDef _ _ _ args _) = zip (map argname args) (map (typeOfStype . argtype) args)
 
+builtins :: [(String, Type)]
+builtins = [("print", TFun TVoid [TStr]), ("tostring", TFun TStr [TInt])]
+
 typeCheckProgram :: S.Program -> Except String ()
 typeCheckProgram (S.PProgram _ fns) = do
     let fnsigs = map parseFunctionSig fns in
-        let defs = M.fromList fnsigs in
-            typeCheckProgram_ fns defs (map snd fnsigs)
+        let defs = M.fromList $ builtins ++ fnsigs in
+            if M.size defs == length (builtins ++ fnsigs)
+            then typeCheckProgram_ fns defs (map snd fnsigs)
+            else throwE "top level redefinition"
 
 
 typeCheckProgram_ :: [S.TopDef] -> TypeEnv -> [Type] -> Except String ()
 typeCheckProgram_ [] _ _ = return ()
-typeCheckProgram_ (td@(S.FnDef pos _ _ args block):b) env ((TFun rettype _):r) = do
-        case runIdentity (runReaderT (runExceptT (typeCheckStmt (S.BStmt pos block))) env') of
-            Left err -> throwE err
-            Right _ -> typeCheckProgram_ b env r
+typeCheckProgram_ (td@(S.FnDef pos _ _ _ block):b) env ((TFun rettype _):r) = do
+    case runIdentity (runReaderT (runExceptT (typeCheckStmt (S.BStmt pos block))) env') of
+        Left err -> throwE err
+        Right _ -> typeCheckProgram_ b env r
     where env' = M.union (M.insert returnRegister rettype env) (M.fromList $ functionArgNames td)
     
+-- Gdyby tylko mieć typy zależne, to bym nie musiał tego pisać.
+typeCheckProgram_ _ _ _ = undefined
 
 {-
 chck :: S.Program -> Except Pos ()
