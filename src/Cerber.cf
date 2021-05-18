@@ -44,7 +44,7 @@ Ret.       Stmt ::= "return" Expr ";" ;
 
 VRet.      Stmt ::= "return" ";" ;
 
-VYield.    Stmt ::= "yield" Expr ";" ;
+--VYield.    Stmt ::= "yield" Expr ";" ;
 
 Cond.      Stmt ::= "if" "(" Expr ")" Stmt  ;
 
@@ -56,7 +56,7 @@ Break.     Stmt ::= "break" ";" ;
 Continue.  Stmt ::= "continue" ";" ;
 While.     Stmt ::= "while" "(" Expr ")" Stmt ;
 
-ForIn.     Stmt ::= "for" Ident "in" Expr Stmt ;
+--ForIn.     Stmt ::= "for" Ident "in" Expr Stmt ;
 
 
 -- Types ---------------------------------------------------

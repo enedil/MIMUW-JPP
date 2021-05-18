@@ -44,14 +44,12 @@ transStmt x = case x of
   AbsCerber.MAss _ expr1 expr2 -> failure x
   AbsCerber.Ret _ expr -> failure x
   AbsCerber.VRet _ -> failure x
-  AbsCerber.VYield _ expr -> failure x
   AbsCerber.Cond _ expr stmt -> failure x
   AbsCerber.CondElse _ expr stmt1 stmt2 -> failure x
   AbsCerber.SExp _ expr -> failure x
   AbsCerber.Break _ -> failure x
   AbsCerber.Continue _ -> failure x
   AbsCerber.While _ expr stmt -> failure x
-  AbsCerber.ForIn _ ident expr stmt -> failure x
 
 transItem :: Show a => AbsCerber.Item' a -> Result
 transItem x = case x of

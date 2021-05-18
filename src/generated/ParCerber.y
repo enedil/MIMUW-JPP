@@ -45,23 +45,20 @@ import LexCerber
   'continue' { PT _ (TS _ 24) }
   'else' { PT _ (TS _ 25) }
   'false' { PT _ (TS _ 26) }
-  'for' { PT _ (TS _ 27) }
-  'function' { PT _ (TS _ 28) }
-  'generator' { PT _ (TS _ 29) }
-  'if' { PT _ (TS _ 30) }
-  'in' { PT _ (TS _ 31) }
-  'int' { PT _ (TS _ 32) }
-  'ref' { PT _ (TS _ 33) }
-  'return' { PT _ (TS _ 34) }
-  'string' { PT _ (TS _ 35) }
-  'true' { PT _ (TS _ 36) }
-  'tuple' { PT _ (TS _ 37) }
-  'void' { PT _ (TS _ 38) }
-  'while' { PT _ (TS _ 39) }
-  'yield' { PT _ (TS _ 40) }
-  '{' { PT _ (TS _ 41) }
-  '||' { PT _ (TS _ 42) }
-  '}' { PT _ (TS _ 43) }
+  'function' { PT _ (TS _ 27) }
+  'generator' { PT _ (TS _ 28) }
+  'if' { PT _ (TS _ 29) }
+  'int' { PT _ (TS _ 30) }
+  'ref' { PT _ (TS _ 31) }
+  'return' { PT _ (TS _ 32) }
+  'string' { PT _ (TS _ 33) }
+  'true' { PT _ (TS _ 34) }
+  'tuple' { PT _ (TS _ 35) }
+  'void' { PT _ (TS _ 36) }
+  'while' { PT _ (TS _ 37) }
+  '{' { PT _ (TS _ 38) }
+  '||' { PT _ (TS _ 39) }
+  '}' { PT _ (TS _ 40) }
   L_Ident  { PT _ (TV _) }
   L_integ  { PT _ (TI _) }
   L_quoted { PT _ (TL _) }
@@ -119,14 +116,12 @@ Stmt : ';' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.Empty
      | Expr7 ':=' Expr ';' { (fst $1, AbsCerber.MAss (fst $1) (snd $1) (snd $3)) }
      | 'return' Expr ';' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.Ret (uncurry AbsCerber.BNFC'Position (tokenLineCol $1)) (snd $2)) }
      | 'return' ';' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.VRet (uncurry AbsCerber.BNFC'Position (tokenLineCol $1))) }
-     | 'yield' Expr ';' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.VYield (uncurry AbsCerber.BNFC'Position (tokenLineCol $1)) (snd $2)) }
      | 'if' '(' Expr ')' Stmt { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.Cond (uncurry AbsCerber.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5)) }
      | 'if' '(' Expr ')' Stmt 'else' Stmt { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.CondElse (uncurry AbsCerber.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5) (snd $7)) }
      | Expr ';' { (fst $1, AbsCerber.SExp (fst $1) (snd $1)) }
      | 'break' ';' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.Break (uncurry AbsCerber.BNFC'Position (tokenLineCol $1))) }
      | 'continue' ';' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.Continue (uncurry AbsCerber.BNFC'Position (tokenLineCol $1))) }
      | 'while' '(' Expr ')' Stmt { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.While (uncurry AbsCerber.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5)) }
-     | 'for' Ident 'in' Expr Stmt { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.ForIn (uncurry AbsCerber.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $4) (snd $5)) }
 
 Item :: { (AbsCerber.BNFC'Position, AbsCerber.Item) }
 Item : Ident { (fst $1, AbsCerber.NoInit (fst $1) (snd $1)) }

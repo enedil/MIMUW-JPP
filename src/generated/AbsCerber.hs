@@ -46,14 +46,12 @@ data Stmt' a
     | MAss a (Expr' a) (Expr' a)
     | Ret a (Expr' a)
     | VRet a
-    | VYield a (Expr' a)
     | Cond a (Expr' a) (Stmt' a)
     | CondElse a (Expr' a) (Stmt' a) (Stmt' a)
     | SExp a (Expr' a)
     | Break a
     | Continue a
     | While a (Expr' a) (Stmt' a)
-    | ForIn a Ident (Expr' a) (Stmt' a)
   deriving (C.Eq, C.Ord, C.Show, C.Read, C.Functor, C.Foldable, C.Traversable)
 
 type Item = Item' BNFC'Position
@@ -147,14 +145,12 @@ instance HasPosition Stmt where
     MAss p _ _ -> p
     Ret p _ -> p
     VRet p -> p
-    VYield p _ -> p
     Cond p _ _ -> p
     CondElse p _ _ _ -> p
     SExp p _ -> p
     Break p -> p
     Continue p -> p
     While p _ _ -> p
-    ForIn p _ _ _ -> p
 
 instance HasPosition Item where
   hasPosition = \case

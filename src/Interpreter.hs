@@ -3,15 +3,13 @@
 module Interpreter where
 
 import Control.Monad.Except
-import qualified Control.Monad.Fail(MonadFail, fail)
 import Control.Monad.State
-import Data.Maybe
-
+import qualified Control.Monad.Fail(MonadFail, fail)
 import Control.Monad.Reader(MonadReader, ReaderT, runReaderT, local, ask, asks)
---import Control.Monad.Identity
---import Control.Monad.Trans.Identity
---import Control.Monad.Trans.Reader
+
+import Data.Maybe
 import qualified Data.Map as M
+
 import Tracing
 
 import qualified AbsCerber as S

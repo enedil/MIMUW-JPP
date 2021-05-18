@@ -151,14 +151,12 @@ instance Print (AbsCerber.Stmt' a) where
     AbsCerber.MAss _ expr1 expr2 -> prPrec i 0 (concatD [prt 7 expr1, doc (showString ":="), prt 0 expr2, doc (showString ";")])
     AbsCerber.Ret _ expr -> prPrec i 0 (concatD [doc (showString "return"), prt 0 expr, doc (showString ";")])
     AbsCerber.VRet _ -> prPrec i 0 (concatD [doc (showString "return"), doc (showString ";")])
-    AbsCerber.VYield _ expr -> prPrec i 0 (concatD [doc (showString "yield"), prt 0 expr, doc (showString ";")])
     AbsCerber.Cond _ expr stmt -> prPrec i 0 (concatD [doc (showString "if"), doc (showString "("), prt 0 expr, doc (showString ")"), prt 0 stmt])
     AbsCerber.CondElse _ expr stmt1 stmt2 -> prPrec i 0 (concatD [doc (showString "if"), doc (showString "("), prt 0 expr, doc (showString ")"), prt 0 stmt1, doc (showString "else"), prt 0 stmt2])
     AbsCerber.SExp _ expr -> prPrec i 0 (concatD [prt 0 expr, doc (showString ";")])
     AbsCerber.Break _ -> prPrec i 0 (concatD [doc (showString "break"), doc (showString ";")])
     AbsCerber.Continue _ -> prPrec i 0 (concatD [doc (showString "continue"), doc (showString ";")])
     AbsCerber.While _ expr stmt -> prPrec i 0 (concatD [doc (showString "while"), doc (showString "("), prt 0 expr, doc (showString ")"), prt 0 stmt])
-    AbsCerber.ForIn _ id_ expr stmt -> prPrec i 0 (concatD [doc (showString "for"), prt 0 id_, doc (showString "in"), prt 0 expr, prt 0 stmt])
   prtList _ [] = concatD []
   prtList _ (x:xs) = concatD [prt 0 x, prt 0 xs]
 
