@@ -3,11 +3,11 @@
 module Interpreter where
 
 import Control.Monad.Except
---import Control.Monad.Fail
+import qualified Control.Monad.Fail(MonadFail, fail)
 import Control.Monad.State
 import Data.Maybe
 
-import Control.Monad.Reader --(ReaderT, ask, runReader, local)
+import Control.Monad.Reader(MonadReader, ReaderT, runReaderT, local, ask, asks)
 --import Control.Monad.Identity
 --import Control.Monad.Trans.Identity
 --import Control.Monad.Trans.Reader
@@ -52,7 +52,7 @@ newtype InterpreterM a = InterpreterM {
   runInterpreterM :: ExceptT String (ReaderT Env (StateT IState IO)) a
 } deriving (Applicative, Monad, Functor, MonadError String, MonadState IState, MonadReader Env, MonadIO)
 
-instance MonadFail InterpreterM where
+instance Control.Monad.Fail.MonadFail InterpreterM where
   fail = throwError
 
 formatError :: forall a. Pos -> String -> InterpreterM a
