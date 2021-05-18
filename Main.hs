@@ -17,7 +17,7 @@ main = do
 run :: String -> IO ()
 run text = do
     case pProgram $ myLexer text of
-        Left str -> putStrLn $ show str
+        Left str -> putStrLn str
         Right prog -> 
             case runExcept $ TypeChecker.typeCheckProgram prog of
                 Left err -> putStrLn $ "type error failure: " ++ err

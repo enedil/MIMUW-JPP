@@ -82,6 +82,7 @@ Program : ListTopDef { (fst $1, AbsCerber.PProgram (fst $1) (snd $1)) }
 
 TopDef :: { (AbsCerber.BNFC'Position, AbsCerber.TopDef) }
 TopDef : Type Ident '(' ListArg ')' Block { (fst $1, AbsCerber.FnDef (fst $1) (snd $1) (snd $2) (snd $4) (snd $6)) }
+       | Type Ident ';' { (fst $1, AbsCerber.Global (fst $1) (snd $1) (snd $2)) }
 
 ListTopDef :: { (AbsCerber.BNFC'Position, [AbsCerber.TopDef]) }
 ListTopDef : TopDef { (fst $1, (:[]) (snd $1)) }

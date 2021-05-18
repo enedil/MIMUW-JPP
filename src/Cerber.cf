@@ -5,6 +5,7 @@ entrypoints Program ;
 PProgram.   Program ::= [TopDef] ;
 
 FnDef.	   TopDef ::= Type Ident "(" [Arg] ")" Block ;
+Global.    TopDef ::= Type Ident ";";
 
 separator nonempty TopDef "" ;
 

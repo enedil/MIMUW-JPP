@@ -9,10 +9,8 @@ import Control.Monad.Trans.Except
 --import Control.Monad.Fail
 import qualified Data.Map as M
 import Data.List(intercalate)
---import Text.Printf (printf)
-import Debug.Trace
-
 import qualified AbsCerber as S
+import Tracing
 
 type Pos = S.BNFC'Position
 
@@ -87,7 +85,7 @@ typeOf_ (S.Neg _ e_in) = do
     expecttype TInt type_in TInt ("cannot negate: " ++ typeShow type_in)
 typeOf_ (S.Not _ e_in) = do
     type_in <- typeOf' e_in
-    expecttype TInt type_in TInt ("cannot invert: " ++ typeShow type_in)
+    expecttype TBool type_in TBool ("cannot invert: " ++ typeShow type_in)
 typeOf_ (S.EMul _ e1 _ e2) = checkBinaryOp e1 e2 TInt TInt "cannot multiply/divide: "
 typeOf_ (S.EAdd _ e1 _ e2) = checkBinaryOp e1 e2 TInt TInt "cannot add/subtract: "
 typeOf_ (S.ERel _ e1 _ e2) = checkBinaryOp e1 e2 TInt TBool "cannot compare: "
@@ -103,7 +101,7 @@ typeOf_ (S.EApp _ fun args) = do
         TFun ret_type arg_types -> 
             if real_arg_types == arg_types 
             then return ret_type 
-            else throwE $ "cannot call: " ++ show fun ++ " with " ++ concatMap typeShow real_arg_types
+            else throwE $ "cannot call: " ++ show fun ++ " with " ++ (intercalate ", " $ map typeShow real_arg_types)
         _ -> throwE $ "not callable:" ++ show fun
 
 
@@ -220,8 +218,9 @@ argname :: S.Arg -> String
 argname (S.VarArg _ _ (S.Ident i)) = i
 argname (S.RefArg _ _ (S.Ident i)) = i
 
-parseFunctionSig :: S.TopDef -> (String, Type)
-parseFunctionSig (S.FnDef _ rettype (S.Ident ident) args _) = (ident, TFun (typeOfStype rettype) (map (typeOfStype . argtype) args))
+parseTopLevelSig :: S.TopDef -> (String, Type)
+parseTopLevelSig (S.FnDef _ rettype (S.Ident ident) args _) = (ident, TFun (typeOfStype rettype) (map (typeOfStype . argtype) args))
+parseTopLevelSig (S.Global _ type_ (S.Ident ident)) = (ident, typeOfStype type_)
 functionArgNames :: S.TopDef -> [(String, Type)]
 functionArgNames (S.FnDef _ _ _ args _) = zip (map argname args) (map (typeOfStype . argtype) args)
 
@@ -230,13 +229,13 @@ builtins = [("print", TFun TVoid [TStr]), ("tostring", TFun TStr [TInt])]
 
 typeCheckProgram :: S.Program -> Except String ()
 typeCheckProgram (S.PProgram _ fns) = do
-    let fnsigs = map parseFunctionSig fns in
-        let defs = M.fromList $ builtins ++ fnsigs in
+    let sigs = map parseTopLevelSig fns in
+        let defs = M.fromList $ builtins ++ sigs in
             if M.lookup mainFunction defs /= Just (TFun TVoid [])
-            then throwE "wrong main signature"
-            else if M.size defs /= length (builtins ++ fnsigs)
+            then throwE "wrong main signature (or lack thereof)"
+            else if M.size defs /= length (builtins ++ sigs)
             then throwE "top level redefinition"
-            else typeCheckProgram_ fns defs (map snd fnsigs)
+            else typeCheckProgram_ fns defs (map snd sigs)
 
 
 typeCheckProgram_ :: [S.TopDef] -> TypeEnv -> [Type] -> Except String ()
@@ -246,6 +245,7 @@ typeCheckProgram_ (td@(S.FnDef pos _ _ _ block):b) env ((TFun rettype _):r) = do
         Left err -> throwE err
         Right _ -> typeCheckProgram_ b env r
     where env' = M.union (M.insert returnRegister rettype env) (M.fromList $ functionArgNames td)
-    
+typeCheckProgram_ (S.Global _ _ _:b) env (_:t) = typeCheckProgram_ b env t
+
 -- Gdyby tylko mieć typy zależne, to bym nie musiał tego pisać.
 typeCheckProgram_ _ _ _ = undefined

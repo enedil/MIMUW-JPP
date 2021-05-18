@@ -12,10 +12,11 @@ import Control.Monad.Reader --(ReaderT, ask, runReader, local)
 --import Control.Monad.Trans.Identity
 --import Control.Monad.Trans.Reader
 import qualified Data.Map as M
-import Debug.Trace(trace)
+import Tracing
 
 import qualified AbsCerber as S
 import qualified TypeChecker as TC
+
 
 type Loc = Int
 type Env = M.Map String Loc
@@ -53,6 +54,10 @@ newtype InterpreterM a = InterpreterM {
 
 instance MonadFail InterpreterM where
   fail = throwError
+
+formatError :: forall a. Pos -> String -> InterpreterM a
+formatError (Just (line, col)) arg = fail $ show line ++ ":" ++ show col ++ ": " ++ arg
+formatError Nothing arg = fail $ "(unknown): " ++ arg
 
 data Arg = ValArg Value | RefArg Value deriving (Show)
 data Fun = FVal (Value -> InterpreterM Fun) | FRef (Loc -> InterpreterM Fun) | FBottom (InterpreterM Value) 
@@ -148,7 +153,7 @@ exec (S.BStmt _ (S.BBlock _ stmts): rest) = do
     case x of
         Just _ -> return x
         Nothing -> exec rest
-exec (S.MAss _ e1 e2: rest) = do
+exec (S.MAss pos e1 e2: rest) = do
         tupRight <- eval e2
         assignTup e1 tupRight
         exec rest
@@ -160,7 +165,9 @@ exec (S.MAss _ e1 e2: rest) = do
             insertToStore right l
         assignTup e right = do
             v <- eval e
-            if v == right then return () else fail $ "values from left and right differ: " ++ show v ++ " and " ++ show right
+            if v == right 
+            then return ()
+            else formatError pos $ "values from left and right differ: " ++ show v ++ " and " ++ show right
             
 
 eval :: S.Expr -> InterpreterM Value
@@ -171,15 +178,15 @@ eval (S.EString _ s) = return $ StringV s
 eval (S.EVar _ (S.Ident ident)) = extractVal ident
 eval (S.Neg _ e) = IntV <$> ((-) 0 . vint <$> eval e)
 eval (S.Not _ e) = BoolV <$> (not . vbool <$> eval e)
-eval (S.EMul _ e1 op e2) = do
+eval (S.EMul pos e1 op e2) = do
         v1 <- eval e1
         v2 <- eval e2
         f op (vint v1) (vint v2)
     where
         f :: S.MulOp -> Int -> Int -> InterpreterM Value
         f (S.Times _) a b = return $ IntV $ a * b
-        f (S.Div _) _ 0 = fail "division by 0"
-        f (S.Mod _) _ 0 = fail "modular division by 0"
+        f (S.Div _) _ 0 = formatError pos "division by 0"
+        f (S.Mod _) _ 0 = formatError pos "modular division by 0"
         f (S.Div _) a b = return $ IntV $ a `div` b
         f (S.Mod _) a b = return $ IntV $ a `mod` b
 eval (S.EAdd _ e1 op e2) = do
@@ -213,7 +220,7 @@ eval (S.EOr _ e1 e2) = do
     then return $ BoolV True
     else eval e2
 eval (S.ETuple _ args) = TupleV <$> mapM eval args
-eval (S.EApp _ e_fn args_) = do
+eval (S.EApp pos e_fn args_) = do
         fn <- eval e_fn
         app (vfun fn) args_
     where
@@ -233,7 +240,7 @@ eval (S.EApp _ e_fn args_) = do
             fn <- f l
             app fn args
         app (FBottom f) [] = f
-        app _ _ = fail "bug: fun application"
+        app _ _ = formatError pos "bug: fun application"
 
 
 registerBuiltins :: InterpreterM () -> InterpreterM ()
@@ -247,17 +254,20 @@ registerBuiltins f = do
 
 makeInterpreter :: S.Program -> InterpreterM ()
 makeInterpreter (S.PProgram _ topdefs) = do
-        registerBuiltins $ f [(ident, makeFnDef body args) | (S.FnDef _ _ (S.Ident ident) args (S.BBlock _ body)) <- topdefs]
+        let (f_idents, funs) = unzip [(ident, (args, body)) | (S.FnDef _ _ (S.Ident ident) args (S.BBlock _ body)) <- topdefs] in do
+            locs <- replicateM (length topdefs) alloc
+            let env = (M.union (M.fromList $ zip (f_idents ++ [ident | S.Global _ _ (S.Ident ident) <- topdefs]) locs)) in do
+                local env $ registerBuiltins $ f [(l, makeFnDef body args) | ((args, body), l) <- zip funs locs]
    where
-    f :: [(String, InterpreterM Fun)] -> InterpreterM ()
+    f :: [(Loc, InterpreterM Fun)] -> InterpreterM ()
     f [] = do
         FunV (FBottom main) <- extractVal "main"
         main >> return ()
-    f ((n, fn):b) = do
-        f' <- fn
-        l <- alloc
+    f ((l, fn):b) = do
+        env <- ask
+        f' <- (traceShow env fn)
         insertToStore (FunV f') l
-        local (M.insert n l) $ f b
+        f b
 
 runInterpreter :: InterpreterM a -> IO (Either String a)
 runInterpreter i = evalStateT (runReaderT (runExceptT $ runInterpreterM i) M.empty) (IState {store=M.empty, lastLoc=0})

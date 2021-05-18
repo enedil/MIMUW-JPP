@@ -24,6 +24,7 @@ transProgram x = case x of
 transTopDef :: Show a => AbsCerber.TopDef' a -> Result
 transTopDef x = case x of
   AbsCerber.FnDef _ type_ ident args block -> failure x
+  AbsCerber.Global _ type_ ident -> failure x
 
 transArg :: Show a => AbsCerber.Arg' a -> Result
 transArg x = case x of
