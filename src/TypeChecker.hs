@@ -2,14 +2,11 @@
 module TypeChecker where
 
 import Control.Monad.Reader --(ReaderT, ask, runReader, local)
---import Control.Monad.Identity
---import Data.Maybe
---import Control.Monad.Trans.Identity
 import Data.Functor.Identity
 import Control.Monad.Trans.Except
 --import Control.Monad.Trans.Reader
-import Control.Monad.Except
-import Control.Monad.Fail
+--import Control.Monad.Except
+--import Control.Monad.Fail
 import qualified Data.Map as M
 import Data.List(intercalate)
 --import Text.Printf (printf)
@@ -21,7 +18,10 @@ type Pos = S.BNFC'Position
 
 returnRegister :: String
 returnRegister = "return"
+inLoopRegister :: String
 inLoopRegister = "while"
+mainFunction :: String
+mainFunction = "main"
 type TypeEnv = M.Map String Type
 
 type TypeCheckerMonad a = ExceptT String (Reader TypeEnv) a
@@ -38,10 +38,10 @@ typeOfStype (S.Void _) = TVoid
 typeOfStype (S.Fun _ ret args) = TFun (typeOfStype ret) (map typeOfStype args)
 typeOfStype (S.Function _ (ret:args)) = TFun (typeOfStype ret) (map typeOfStype args)
 typeOfStype (S.Tuple _ elems) = TTuple (map typeOfStype elems)
-typeOfStype x = (trace (show x) undefined)
+typeOfStype x = traceShow x undefined
 
 formatError :: forall a. Pos -> String -> TypeCheckerMonad a
-formatError (Just (line, col)) arg = throwE $ (show line) ++ ":" ++ (show col) ++ ": " ++ arg
+formatError (Just (line, col)) arg = throwE $ show line ++ ":" ++ show col ++ ": " ++ arg
 formatError Nothing arg = throwE $ "(unknown): " ++ arg
 
 cmptypes :: Type -> Type -> Pos -> String -> TypeCheckerMonad ()
@@ -53,86 +53,76 @@ typeShow TStr = "str"
 typeShow TBool = "bool"
 typeShow TVoid = "void"
 typeShow (TFun ret args) = "function<" ++ (intercalate "," $ map typeShow (ret: args)) ++ ">"
-typeShow (TTuple elems) = "tuple<" ++ (intercalate "," (map typeShow elems)) ++ ">"
+typeShow (TTuple elems) = "tuple<" ++ (intercalate "," $ map typeShow elems) ++ ">"
 
 typeOf :: S.Expr -> TypeEnv -> Either String Type
-typeOf e initEnv = let ty = runReader (runExceptT (typeOf_ e)) initEnv in (trace ("expr=" ++ (show e) ++ ", type=" ++ (show ty)) ty)
+typeOf e = runReader (runExceptT $ typeOf_ e)
 
-expecttype :: Type -> Type -> Type -> Pos -> String -> TypeCheckerMonad Type
-expecttype expected input rettype pos err = if expected == input then return rettype else formatError pos err
-expecttype2 :: Type -> Type -> Type -> Type -> Pos -> String -> TypeCheckerMonad Type
-expecttype2 expected input1 input2 rettype pos err = if expected == input1 && expected == input2 then return rettype else formatError pos err
+expecttype :: Type -> Type -> Type -> String -> TypeCheckerMonad Type
+expecttype expected input rettype err = if expected == input then return rettype else throwE err
+expecttype2 :: Type -> Type -> Type -> Type -> String -> TypeCheckerMonad Type
+expecttype2 expected input1 input2 rettype err = if expected == input1 && expected == input2 then return rettype else throwE err
+checkBinaryOp :: S.Expr -> S.Expr -> Type -> Type -> String -> TypeCheckerMonad Type
+checkBinaryOp e1 e2 expected rettype msg = do
+    t1 <- typeOf' e1
+    t2 <- typeOf' e2
+    expecttype2 expected t1 t2 rettype $ msg ++ typeShow t1 ++ " and " ++ typeShow t2
 
 typeOf' :: S.Expr -> TypeCheckerMonad Type
-typeOf' x = trace ("expr=" ++ (show x) ++ "\n") $ typeOf_ x
+typeOf' x = trace ("expr=" ++ show x) $ typeOf_ x
 
 typeOf_ :: S.Expr -> TypeCheckerMonad Type
-typeOf_ e@(S.EVar _ (S.Ident name)) = do
+typeOf_ (S.EVar _ (S.Ident name)) = do
     type_ <- asks (M.lookup name)
     case type_ of
         Just t -> return t
-        Nothing -> formatError (S.hasPosition e) ("Variable or function not in scope: " ++ name)
+        Nothing -> throwE ("Variable or function not in scope: " ++ name)
 
-typeOf_ e@(S.ELitInt _ _) = return TInt
-typeOf_ e@(S.ELitTrue _) = return TBool 
-typeOf_ e@(S.ELitFalse _) = return TBool
-typeOf_ e@(S.EString _ _) = return TStr
-typeOf_ e@(S.Neg _ e_in) = do
+typeOf_ (S.ELitInt _ _) = return TInt
+typeOf_ (S.ELitTrue _) = return TBool 
+typeOf_ (S.ELitFalse _) = return TBool
+typeOf_ (S.EString _ _) = return TStr
+typeOf_ (S.Neg _ e_in) = do
     type_in <- typeOf' e_in
-    expecttype TInt type_in TInt (S.hasPosition e) ("cannot negate: " ++ (typeShow type_in))
-typeOf_ e@(S.Not _ e_in) = do
+    expecttype TInt type_in TInt ("cannot negate: " ++ typeShow type_in)
+typeOf_ (S.Not _ e_in) = do
     type_in <- typeOf' e_in
-    expecttype TInt type_in TInt (S.hasPosition e) ("cannot invert: " ++ (typeShow type_in))
-typeOf_ e@(S.EMul _ e1 _ e2) = do
-    type1 <- typeOf' e1
-    type2 <- typeOf' e2
-    expecttype2 TInt type1 type2 TInt (S.hasPosition e) ("cannot multiply/divide: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
-typeOf_ e@(S.EAdd _ e1 _ e2) = do
-    type1 <- typeOf' e1
-    type2 <- typeOf' e2
-    expecttype2 TInt type1 type2 TInt (S.hasPosition e) ("cannot add/subtract: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
-typeOf_ e@(S.ERel _ e1 _ e2) = do
-    type1 <- typeOf' e1
-    type2 <- typeOf' e2
-    expecttype2 TInt type1 type2 TBool (S.hasPosition e) ("cannot compare: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
-typeOf_ e@(S.EAnd _ e1 e2) = do
-    type1 <- typeOf' e1
-    type2 <- typeOf' e2
-    expecttype2 TBool type1 type2 TBool (S.hasPosition e) ("cannot and: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
-typeOf_ e@(S.EOr _ e1 e2) = do
-    type1 <- typeOf' e1
-    type2 <- typeOf' e2
-    expecttype2 TBool type1 type2 TBool (S.hasPosition e) ("cannot or: " ++ (typeShow type1) ++ " and " ++ (typeShow type2))
-typeOf_ e@(S.ETuple _ exprs) = do
+    expecttype TInt type_in TInt ("cannot invert: " ++ typeShow type_in)
+typeOf_ (S.EMul _ e1 _ e2) = checkBinaryOp e1 e2 TInt TInt "cannot multiply/divide: "
+typeOf_ (S.EAdd _ e1 _ e2) = checkBinaryOp e1 e2 TInt TInt "cannot add/subtract: "
+typeOf_ (S.ERel _ e1 _ e2) = checkBinaryOp e1 e2 TInt TBool "cannot compare: "
+typeOf_ (S.EAnd _ e1 e2) = checkBinaryOp e1 e2 TBool TBool "cannot and: "
+typeOf_ (S.EOr _ e1 e2) = checkBinaryOp e1 e2 TBool TBool "cannot or: "
+typeOf_ (S.ETuple _ exprs) = do
     types <- mapM typeOf' exprs
     return $ TTuple types
-typeOf_ e@(S.EApp _ fun args) = do
+typeOf_ (S.EApp _ fun args) = do
     fun_type <- typeOf' fun 
     real_arg_types <- mapM typeOf_ args
     case fun_type of
         TFun ret_type arg_types -> 
             if real_arg_types == arg_types 
             then return ret_type 
-            else formatError (S.hasPosition e) ("cannot call: " ++ (show fun) ++ " with " ++ (concat (map typeShow real_arg_types)))
-        _ -> formatError (S.hasPosition e) ("not callable:" ++ (show fun))
+            else throwE $ "cannot call: " ++ show fun ++ " with " ++ concatMap typeShow real_arg_types
+        _ -> throwE $ "not callable:" ++ show fun
 
 
 getdeclarations :: S.Block -> TypeEnv -> Except String (TypeEnv, S.Block)
 getdeclarations bl@(S.BBlock _ declarations) env =
-    let (decls, nondecls) = (filter isdecl declarations, join $ fmap decltoass declarations) in
+    let (decls, nondecls) = (filter isdecl declarations, decltoass =<< declarations) in
         case runIdentity (runExceptT (foldM decltoenv env decls)) of
             Left err -> throwE err
-            Right env_ -> return (env_, (S.BBlock (S.hasPosition bl) nondecls))
+            Right env_ -> return (env_, S.BBlock (S.hasPosition bl) nondecls)
     where
         isdecl :: S.Stmt -> Bool
         isdecl (S.Decl _ _ _) = True
         isdecl _ = False
         decltoass :: S.Stmt -> [S.Stmt]
-        decltoass (S.Decl _ _ items) = [(S.Ass pos ident expr) | (S.Init pos ident expr) <- items]
+        decltoass (S.Decl _ _ items) = [S.Ass pos ident expr | (S.Init pos ident expr) <- items]
         decltoass x = [x] 
         decltoenv :: TypeEnv -> S.Stmt -> Except String TypeEnv
         decltoenv e (S.Decl _ type_ items) = 
-            case (foldM_ (\_ _ -> return ()) () [typeOf expr env | S.Init _ (S.Ident _) expr <- items]) of
+            case foldM_ (\_ _ -> return ()) () [typeOf expr env | S.Init _ (S.Ident _) expr <- items] of
                 Left err -> throwE err
                 _ -> return $ M.union e (M.fromList $ getvars (typeOfStype type_) items)
         decltoenv _ _ = undefined
@@ -142,8 +132,8 @@ getdeclarations bl@(S.BBlock _ declarations) env =
 typeCheckStmt :: S.Stmt -> TypeCheckerMonad ()
 typeCheckStmt (S.BStmt _ bl@(S.BBlock _ _)) = do
     env <- ask
-    case runExcept (getdeclarations bl env) of
-        Right (env', (S.BBlock _ l')) -> local (const env') (f l')
+    case runExcept $ getdeclarations bl env of
+        Right (env', S.BBlock _ l') -> local (const env') (f l')
         Left err -> throwE err
     where
         f [] = return ()
@@ -153,7 +143,7 @@ typeCheckStmt st@(S.Ass _ (S.Ident ident) expr) = do
     env <- ask
     case (M.lookup ident env, typeOf expr env) of
         (Just id_t, Right expr_t) -> 
-            cmptypes id_t expr_t (S.hasPosition st) $ "can't assign type " ++ (typeShow expr_t) ++ " to variable of type " ++ (typeShow id_t) 
+            cmptypes id_t expr_t (S.hasPosition st) $ "can't assign type " ++ typeShow expr_t ++ " to variable of type " ++ typeShow id_t
         (Nothing, Right _) -> formatError (S.hasPosition st) $ "undefined variable " ++ ident
         (_, Left err) -> formatError (S.hasPosition st) err
 
@@ -161,13 +151,13 @@ typeCheckStmt st@(S.VRet _ ) = do
     env <- ask
     case M.lookup returnRegister env of
         Just TVoid -> return ()
-        _ -> formatError (S.hasPosition st) $ "cannot return void from nonvoid function"
+        _ -> formatError (S.hasPosition st) "cannot return void from nonvoid function"
 typeCheckStmt st@(S.Ret _ e) = do
     env <- ask
     case (M.lookup returnRegister env, typeOf e env) of
         (Nothing, _) -> formatError (S.hasPosition st) " fatal error: return register not allocated"
         (Just t, Right e_t) -> 
-            cmptypes t e_t (S.hasPosition st) $ "Cannot return expression of type " ++ (show e_t) ++ " from function with type " ++ (show t)
+            cmptypes t e_t (S.hasPosition st) $ "Cannot return expression of type " ++ show e_t ++ " from function with type " ++ show t
         (_, Left err) -> formatError (S.hasPosition st) err
 
 
@@ -205,8 +195,15 @@ typeCheckStmt st@(S.While _ e s) = do
 
 typeCheckStmt st@(S.Break _) = checkIsInLoop st
 typeCheckStmt st@(S.Continue _) = checkIsInLoop st
+typeCheckStmt st@(S.MAss _ e1 e2) = do
+    env <- ask
+    case (typeOf e1 env, typeOf e2 env) of
+        (Right t1, Right t2) -> if t1 == t2 then return () else formatError (S.hasPosition st) "types from := assignment do not match"
+        (Left err, _) -> formatError (S.hasPosition st) err
+        (_, Left err) -> formatError (S.hasPosition st) err
 
-typeCheckStmt xd = formatError Nothing $ "ajja: " ++ (show xd)
+
+typeCheckStmt xd = formatError Nothing $ "ajja: " ++ show xd
 
 checkIsInLoop :: S.Stmt -> TypeCheckerMonad ()
 checkIsInLoop st = do
@@ -235,9 +232,11 @@ typeCheckProgram :: S.Program -> Except String ()
 typeCheckProgram (S.PProgram _ fns) = do
     let fnsigs = map parseFunctionSig fns in
         let defs = M.fromList $ builtins ++ fnsigs in
-            if M.size defs == length (builtins ++ fnsigs)
-            then typeCheckProgram_ fns defs (map snd fnsigs)
-            else throwE "top level redefinition"
+            if M.lookup mainFunction defs /= Just (TFun TVoid [])
+            then throwE "wrong main signature"
+            else if M.size defs /= length (builtins ++ fnsigs)
+            then throwE "top level redefinition"
+            else typeCheckProgram_ fns defs (map snd fnsigs)
 
 
 typeCheckProgram_ :: [S.TopDef] -> TypeEnv -> [Type] -> Except String ()
@@ -250,34 +249,3 @@ typeCheckProgram_ (td@(S.FnDef pos _ _ _ block):b) env ((TFun rettype _):r) = do
     
 -- Gdyby tylko mieć typy zależne, to bym nie musiał tego pisać.
 typeCheckProgram_ _ _ _ = undefined
-
-{-
-chck :: S.Program -> Except Pos ()
-chck (S.PProgram _ fns) = 
-    check_is_in_loop_independent [(pos, trace ("\nAaa " ++ (show body) ++ "\n") body) | (S.FnDef pos _ _ _ body) <- fns]
-
--- TODO: lambdy z break/continue
-
-type IsInLoop = Bool
-check_is_in_loop_independent :: [(Pos, S.Block)] -> Except Pos ()
-check_is_in_loop_independent [] = return ()
-check_is_in_loop_independent ((pos, body):b) = do
-    runReaderT (check_is_in_loop (S.BStmt pos body)) False
-    check_is_in_loop_independent b
-
-check_is_in_loop :: S.Stmt -> ReaderT IsInLoop (Except Pos) ()
-check_is_in_loop (S.While _ e stmt) = do
-    local (const True) $ (trace ("xd:" ++ show (typeOf e M.empty) ++ "\n\n") check_is_in_loop) stmt
-check_is_in_loop (S.ForIn _ _ _ stmt2) = do
-    local (const True) $ check_is_in_loop stmt2
-check_is_in_loop (S.Continue pos) = do
-    in_loop <- ask
-    if in_loop then return () else throwError pos
-check_is_in_loop (S.Break pos) = do
-    in_loop <- ask
-    if in_loop then return () else throwError pos
-check_is_in_loop (S.BStmt _ (S.BBlock _ stmts)) = do
-    sequence_ (map check_is_in_loop stmts) >>= return
-check_is_in_loop (S.SExp _ e) = return $ trace ("expr:" ++ (show e) ++ "\n") ()
-check_is_in_loop _ = return ()
--}
