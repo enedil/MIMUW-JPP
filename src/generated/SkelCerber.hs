@@ -76,7 +76,6 @@ transExpr x = case x of
   AbsCerber.ELitFalse _ -> failure x
   AbsCerber.EApp _ expr exprs -> failure x
   AbsCerber.EString _ string -> failure x
-  AbsCerber.ELambda _ args type_ block -> failure x
   AbsCerber.Neg _ expr -> failure x
   AbsCerber.Not _ expr -> failure x
   AbsCerber.EMul _ expr1 mulop expr2 -> failure x

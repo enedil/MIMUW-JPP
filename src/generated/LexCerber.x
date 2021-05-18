@@ -21,7 +21,7 @@ $i = [$l $d _ ']     -- identifier character
 $u = [. \n]          -- universal: any character
 
 @rsyms =    -- symbols and non-identifier-like reserved words
-   \( | \) | \, | \{ | \} | \; | \= | \: \= | \< | \> | \[ \~ | \] \~ | \[ | \] | \: | \~ \> | \- | \! | \& \& | \| \| | \~ \[ | \~ \] | \+ | \* | \/ | \% | \< \= | \> \= | \= \= | \! \=
+   \( | \) | \, | \{ | \} | \; | \= | \: \= | \< | \> | \- | \! | \& \& | \| \| | \[ | \] | \+ | \* | \/ | \% | \< \= | \> \= | \= \= | \! \=
 
 :-
 
@@ -109,7 +109,7 @@ eitherResIdent tv s = treeFind resWords
                               | s == a = t
 
 resWords :: BTree
-resWords = b "boolean" 25 (b ":=" 13 (b "*" 7 (b "&&" 4 (b "!=" 2 (b "!" 1 N N) (b "%" 3 N N)) (b ")" 6 (b "(" 5 N N) N)) (b "-" 10 (b "," 9 (b "+" 8 N N) N) (b ":" 12 (b "/" 11 N N) N))) (b ">" 19 (b "<=" 16 (b "<" 15 (b ";" 14 N N) N) (b "==" 18 (b "=" 17 N N) N)) (b "[~" 22 (b "[" 21 (b ">=" 20 N N) N) (b "]~" 24 (b "]" 23 N N) N)))) (b "string" 38 (b "generator" 32 (b "false" 29 (b "continue" 27 (b "break" 26 N N) (b "else" 28 N N)) (b "function" 31 (b "for" 30 N N) N)) (b "int" 35 (b "in" 34 (b "if" 33 N N) N) (b "return" 37 (b "ref" 36 N N) N))) (b "{" 44 (b "void" 41 (b "tuple" 40 (b "true" 39 N N) N) (b "yield" 43 (b "while" 42 N N) N)) (b "~>" 47 (b "}" 46 (b "||" 45 N N) N) (b "~]" 49 (b "~[" 48 N N) N))))
+resWords = b "boolean" 22 (b "/" 11 (b ")" 6 (b "%" 3 (b "!=" 2 (b "!" 1 N N) N) (b "(" 5 (b "&&" 4 N N) N)) (b "," 9 (b "+" 8 (b "*" 7 N N) N) (b "-" 10 N N))) (b "==" 17 (b "<" 14 (b ";" 13 (b ":=" 12 N N) N) (b "=" 16 (b "<=" 15 N N) N)) (b "[" 20 (b ">=" 19 (b ">" 18 N N) N) (b "]" 21 N N)))) (b "ref" 33 (b "function" 28 (b "else" 25 (b "continue" 24 (b "break" 23 N N) N) (b "for" 27 (b "false" 26 N N) N)) (b "in" 31 (b "if" 30 (b "generator" 29 N N) N) (b "int" 32 N N))) (b "while" 39 (b "true" 36 (b "string" 35 (b "return" 34 N N) N) (b "void" 38 (b "tuple" 37 N N) N)) (b "||" 42 (b "{" 41 (b "yield" 40 N N) N) (b "}" 43 N N))))
    where b s n = let bs = s
                  in  B bs (TS bs n)
 

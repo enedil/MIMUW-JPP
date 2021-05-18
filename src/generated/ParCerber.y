@@ -30,44 +30,38 @@ import LexCerber
   ',' { PT _ (TS _ 9) }
   '-' { PT _ (TS _ 10) }
   '/' { PT _ (TS _ 11) }
-  ':' { PT _ (TS _ 12) }
-  ':=' { PT _ (TS _ 13) }
-  ';' { PT _ (TS _ 14) }
-  '<' { PT _ (TS _ 15) }
-  '<=' { PT _ (TS _ 16) }
-  '=' { PT _ (TS _ 17) }
-  '==' { PT _ (TS _ 18) }
-  '>' { PT _ (TS _ 19) }
-  '>=' { PT _ (TS _ 20) }
-  '[' { PT _ (TS _ 21) }
-  '[~' { PT _ (TS _ 22) }
-  ']' { PT _ (TS _ 23) }
-  ']~' { PT _ (TS _ 24) }
-  'boolean' { PT _ (TS _ 25) }
-  'break' { PT _ (TS _ 26) }
-  'continue' { PT _ (TS _ 27) }
-  'else' { PT _ (TS _ 28) }
-  'false' { PT _ (TS _ 29) }
-  'for' { PT _ (TS _ 30) }
-  'function' { PT _ (TS _ 31) }
-  'generator' { PT _ (TS _ 32) }
-  'if' { PT _ (TS _ 33) }
-  'in' { PT _ (TS _ 34) }
-  'int' { PT _ (TS _ 35) }
-  'ref' { PT _ (TS _ 36) }
-  'return' { PT _ (TS _ 37) }
-  'string' { PT _ (TS _ 38) }
-  'true' { PT _ (TS _ 39) }
-  'tuple' { PT _ (TS _ 40) }
-  'void' { PT _ (TS _ 41) }
-  'while' { PT _ (TS _ 42) }
-  'yield' { PT _ (TS _ 43) }
-  '{' { PT _ (TS _ 44) }
-  '||' { PT _ (TS _ 45) }
-  '}' { PT _ (TS _ 46) }
-  '~>' { PT _ (TS _ 47) }
-  '~[' { PT _ (TS _ 48) }
-  '~]' { PT _ (TS _ 49) }
+  ':=' { PT _ (TS _ 12) }
+  ';' { PT _ (TS _ 13) }
+  '<' { PT _ (TS _ 14) }
+  '<=' { PT _ (TS _ 15) }
+  '=' { PT _ (TS _ 16) }
+  '==' { PT _ (TS _ 17) }
+  '>' { PT _ (TS _ 18) }
+  '>=' { PT _ (TS _ 19) }
+  '[' { PT _ (TS _ 20) }
+  ']' { PT _ (TS _ 21) }
+  'boolean' { PT _ (TS _ 22) }
+  'break' { PT _ (TS _ 23) }
+  'continue' { PT _ (TS _ 24) }
+  'else' { PT _ (TS _ 25) }
+  'false' { PT _ (TS _ 26) }
+  'for' { PT _ (TS _ 27) }
+  'function' { PT _ (TS _ 28) }
+  'generator' { PT _ (TS _ 29) }
+  'if' { PT _ (TS _ 30) }
+  'in' { PT _ (TS _ 31) }
+  'int' { PT _ (TS _ 32) }
+  'ref' { PT _ (TS _ 33) }
+  'return' { PT _ (TS _ 34) }
+  'string' { PT _ (TS _ 35) }
+  'true' { PT _ (TS _ 36) }
+  'tuple' { PT _ (TS _ 37) }
+  'void' { PT _ (TS _ 38) }
+  'while' { PT _ (TS _ 39) }
+  'yield' { PT _ (TS _ 40) }
+  '{' { PT _ (TS _ 41) }
+  '||' { PT _ (TS _ 42) }
+  '}' { PT _ (TS _ 43) }
   L_Ident  { PT _ (TV _) }
   L_integ  { PT _ (TI _) }
   L_quoted { PT _ (TL _) }
@@ -160,9 +154,8 @@ Expr6 : Ident { (fst $1, AbsCerber.EVar (fst $1) (snd $1)) }
       | Integer { (fst $1, AbsCerber.ELitInt (fst $1) (snd $1)) }
       | 'true' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.ELitTrue (uncurry AbsCerber.BNFC'Position (tokenLineCol $1))) }
       | 'false' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.ELitFalse (uncurry AbsCerber.BNFC'Position (tokenLineCol $1))) }
-      | Expr6 '[~' ListExpr ']~' { (fst $1, AbsCerber.EApp (fst $1) (snd $1) (snd $3)) }
+      | Expr6 '(' ListExpr ')' { (fst $1, AbsCerber.EApp (fst $1) (snd $1) (snd $3)) }
       | String { (fst $1, AbsCerber.EString (fst $1) (snd $1)) }
-      | '[' ListArg ']' ':' Type '~>' Block { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.ELambda (uncurry AbsCerber.BNFC'Position (tokenLineCol $1)) (snd $2) (snd $5) (snd $7)) }
       | Expr7 { (fst $1, (snd $1)) }
 
 Expr5 :: { (AbsCerber.BNFC'Position, AbsCerber.Expr) }
@@ -191,7 +184,7 @@ Expr : Expr1 '||' Expr { (fst $1, AbsCerber.EOr (fst $1) (snd $1) (snd $3)) }
      | Expr1 { (fst $1, (snd $1)) }
 
 Expr7 :: { (AbsCerber.BNFC'Position, AbsCerber.Expr) }
-Expr7 : '~[' ListExpr '~]' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.ETuple (uncurry AbsCerber.BNFC'Position (tokenLineCol $1)) (snd $2)) }
+Expr7 : '[' ListExpr ']' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.ETuple (uncurry AbsCerber.BNFC'Position (tokenLineCol $1)) (snd $2)) }
       | '(' Expr ')' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), (snd $2)) }
 
 ListExpr :: { (AbsCerber.BNFC'Position, [AbsCerber.Expr]) }

@@ -78,7 +78,6 @@ data Expr' a
     | ELitFalse a
     | EApp a (Expr' a) [Expr' a]
     | EString a String
-    | ELambda a [Arg' a] (Type' a) (Block' a)
     | Neg a (Expr' a)
     | Not a (Expr' a)
     | EMul a (Expr' a) (MulOp' a) (Expr' a)
@@ -178,7 +177,6 @@ instance HasPosition Expr where
     ELitFalse p -> p
     EApp p _ _ -> p
     EString p _ -> p
-    ELambda p _ _ _ -> p
     Neg p _ -> p
     Not p _ -> p
     EMul p _ _ _ -> p

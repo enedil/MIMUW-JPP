@@ -1,6 +1,6 @@
 
 build_dir = build
-exe = cerber
+exe = interpreter
 
 $(exe):
 	mkdir -p $(build_dir)

@@ -4,7 +4,7 @@ entrypoints Program ;
 
 PProgram.   Program ::= [TopDef] ;
 
-FnDef.	   TopDef ::= Type Ident "(" [Arg] ")" FnBlock ;
+FnDef.	   TopDef ::= Type Ident "(" [Arg] ")" Block ;
 
 separator nonempty TopDef "" ;
 
@@ -88,11 +88,11 @@ ELitTrue.  Expr6 ::= "true" ;
 
 ELitFalse. Expr6 ::= "false" ;
 
-EApp.      Expr6 ::= Expr6 "[~" [Expr] "]~" ;
+EApp.      Expr6 ::= Expr6 "(" [Expr] ")" ;
 
 EString.   Expr6 ::= String ;
 
-ELambda.   Expr6 ::= "[" [Arg] "]" ":" Type "~>" Block ;
+--ELambda.   Expr6 ::= "[" [Arg] "]" ":" Type "~>" Block ;
 
 Neg.       Expr5 ::= "-" Expr6 ;
 
@@ -108,7 +108,7 @@ EAnd.      Expr1 ::= Expr2 "&&" Expr1 ;
 
 EOr.       Expr ::= Expr1 "||" Expr ;
 
-ETuple.    Expr7 ::= "~[" [Expr] "~]" ;
+ETuple.    Expr7 ::= "[" [Expr] "]" ;
 
 coercions  Expr 7 ;
 

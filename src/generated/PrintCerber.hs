@@ -194,9 +194,8 @@ instance Print (AbsCerber.Expr' a) where
     AbsCerber.ELitInt _ n -> prPrec i 6 (concatD [prt 0 n])
     AbsCerber.ELitTrue _ -> prPrec i 6 (concatD [doc (showString "true")])
     AbsCerber.ELitFalse _ -> prPrec i 6 (concatD [doc (showString "false")])
-    AbsCerber.EApp _ expr exprs -> prPrec i 6 (concatD [prt 6 expr, doc (showString "[~"), prt 0 exprs, doc (showString "]~")])
+    AbsCerber.EApp _ expr exprs -> prPrec i 6 (concatD [prt 6 expr, doc (showString "("), prt 0 exprs, doc (showString ")")])
     AbsCerber.EString _ str -> prPrec i 6 (concatD [prt 0 str])
-    AbsCerber.ELambda _ args type_ block -> prPrec i 6 (concatD [doc (showString "["), prt 0 args, doc (showString "]"), doc (showString ":"), prt 0 type_, doc (showString "~>"), prt 0 block])
     AbsCerber.Neg _ expr -> prPrec i 5 (concatD [doc (showString "-"), prt 6 expr])
     AbsCerber.Not _ expr -> prPrec i 5 (concatD [doc (showString "!"), prt 6 expr])
     AbsCerber.EMul _ expr1 mulop expr2 -> prPrec i 4 (concatD [prt 4 expr1, prt 0 mulop, prt 5 expr2])
@@ -204,7 +203,7 @@ instance Print (AbsCerber.Expr' a) where
     AbsCerber.ERel _ expr1 relop expr2 -> prPrec i 2 (concatD [prt 2 expr1, prt 0 relop, prt 3 expr2])
     AbsCerber.EAnd _ expr1 expr2 -> prPrec i 1 (concatD [prt 2 expr1, doc (showString "&&"), prt 1 expr2])
     AbsCerber.EOr _ expr1 expr2 -> prPrec i 0 (concatD [prt 1 expr1, doc (showString "||"), prt 0 expr2])
-    AbsCerber.ETuple _ exprs -> prPrec i 7 (concatD [doc (showString "~["), prt 0 exprs, doc (showString "~]")])
+    AbsCerber.ETuple _ exprs -> prPrec i 7 (concatD [doc (showString "["), prt 0 exprs, doc (showString "]")])
   prtList _ [] = concatD []
   prtList _ [x] = concatD [prt 0 x]
   prtList _ (x:xs) = concatD [prt 0 x, doc (showString ","), prt 0 xs]
