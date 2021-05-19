@@ -36,7 +36,7 @@ typeOfStype (S.Void _) = TVoid
 typeOfStype (S.Fun _ ret args) = TFun (typeOfStype ret) (map typeOfStype args)
 typeOfStype (S.Function _ (ret:args)) = TFun (typeOfStype ret) (map typeOfStype args)
 typeOfStype (S.Tuple _ elems) = TTuple (map typeOfStype elems)
-typeOfStype x = traceShow x undefined
+typeOfStype x = bug $ show x
 
 formatError :: forall a. Pos -> String -> TypeCheckerMonad a
 formatError (Just (line, col)) arg = throwE $ show line ++ ":" ++ show col ++ ": " ++ arg
@@ -67,7 +67,7 @@ checkBinaryOp :: Pos -> S.Expr -> S.Expr -> Type -> Type -> String -> TypeChecke
 checkBinaryOp pos e1 e2 expected rettype msg = do
     t1 <- typeOf' e1
     t2 <- typeOf' e2
-    expecttype2 pos expected t1 t2 rettype $ msg ++ typeShow t1 ++ " and " ++ typeShow t2
+    expecttype2 pos expected t1 t2 rettype $ msg ++ show t1 ++ " and " ++ show t2
 
 typeOf' :: S.Expr -> TypeCheckerMonad Type
 typeOf' x = trace ("expr=" ++ show x) $ typeOf_ x
@@ -77,7 +77,7 @@ typeOf_ (S.EVar _ (S.Ident name)) = do
     type_ <- asks (M.lookup name)
     case type_ of
         Just t -> return t
-        Nothing -> throwE ("Variable or function not in scope: " ++ name)
+        Nothing -> throwE $ "Variable or function not in scope: " ++ name
 
 typeOf_ (S.ELitInt _ _) = return TInt
 typeOf_ (S.ELitTrue _) = return TBool 
@@ -85,10 +85,10 @@ typeOf_ (S.ELitFalse _) = return TBool
 typeOf_ (S.EString _ _) = return TStr
 typeOf_ (S.Neg p e_in) = do
     type_in <- typeOf' e_in
-    expecttype p TInt type_in TInt ("cannot negate: " ++ typeShow type_in)
+    expecttype p TInt type_in TInt ("cannot negate: " ++ show type_in)
 typeOf_ (S.Not p e_in) = do
     type_in <- typeOf' e_in
-    expecttype p TBool type_in TBool ("cannot invert: " ++ typeShow type_in)
+    expecttype p TBool type_in TBool ("cannot invert: " ++ show type_in)
 typeOf_ (S.EMul p e1 _ e2) = checkBinaryOp p e1 e2 TInt TInt "cannot multiply/divide: "
 typeOf_ (S.EAdd p e1 _ e2) = checkBinaryOp p e1 e2 TInt TInt "cannot add/subtract: "
 typeOf_ (S.ERel p e1 _ e2) = checkBinaryOp p e1 e2 TInt TBool "cannot compare: "
@@ -104,7 +104,7 @@ typeOf_ (S.EApp _ fun args) = do
         TFun ret_type arg_types -> 
             if real_arg_types == arg_types 
             then return ret_type 
-            else throwE $ "cannot call: " ++ show fun ++ " with " ++ (intercalate ", " $ map typeShow real_arg_types)
+            else throwE $ "cannot call: " ++ show fun ++ " with " ++ (intercalate ", " $ map show real_arg_types)
         _ -> throwE $ "not callable:" ++ show fun
 
 
@@ -125,9 +125,11 @@ getdeclarations bl@(S.BBlock _ declarations) env =
         decltoenv e (S.Decl _ type_ items) = 
             case sequence [typeOf expr env | S.Init _ (S.Ident _) expr <- items] of
                 Left err -> throwE err
-                _ -> let u = M.union e (M.fromList $ getvars (typeOfStype type_) items) in
-                        if M.size u == length items then return u else throwE "redeclaration of local variable"
-        decltoenv _ _ = undefined
+                _ -> let u = M.fromList $ getvars (typeOfStype type_) items in
+                        if trace ("envs: " ++ show u ++ " -- " ++ show items) (M.size u == length items) 
+                        then return (M.union e u)
+                        else throwE "redeclaration of local variable"
+        decltoenv e st = bug $ "decltoenv called with unexpected parameters " ++ show e ++ ", " ++ show st
         getvars :: Type -> [S.Item] -> [(String, Type)]
         getvars type_ items = [(ident, type_) | S.Init _ (S.Ident ident) _ <- items] ++ [(ident, type_) | S.NoInit _ (S.Ident ident) <- items]
 
@@ -145,7 +147,7 @@ typeCheckStmt st@(S.Ass _ (S.Ident ident) expr) = do
     env <- ask
     case (M.lookup ident env, typeOf expr env) of
         (Just id_t, Right expr_t) -> 
-            cmptypes id_t expr_t (S.hasPosition st) $ "can't assign type " ++ typeShow expr_t ++ " to variable of type " ++ typeShow id_t
+            cmptypes id_t expr_t (S.hasPosition st) $ "can't assign type " ++ show expr_t ++ " to variable of type " ++ show id_t
         (Nothing, Right _) -> formatError (S.hasPosition st) $ "undefined variable " ++ ident
         (_, Left err) -> formatError (S.hasPosition st) err
 
@@ -203,7 +205,7 @@ typeCheckStmt st@(S.MAss _ e1 e2) = do
         (Right t1, Right t2) -> if t1 == t2 then return () else formatError (S.hasPosition st) "types from := assignment do not match"
         (Left err, _) -> formatError (S.hasPosition st) err
         (_, Left err) -> formatError (S.hasPosition st) err
-typeCheckStmt arg = trace ("bug: typeCheckProgram called with arg=" ++ show arg) undefined
+typeCheckStmt arg = bug $ "typeCheckProgram called with arg=" ++ show arg
 
 checkIsInLoop :: S.Stmt -> TypeCheckerMonad ()
 checkIsInLoop st = do
@@ -224,7 +226,7 @@ parseTopLevelSig (S.FnDef _ rettype (S.Ident ident) args _) = (ident, TFun (type
 parseTopLevelSig (S.Global _ type_ (S.Ident ident)) = (ident, typeOfStype type_)
 functionArgNames :: S.TopDef -> [(String, Type)]
 functionArgNames (S.FnDef _ _ _ args _) = zip (map argname args) (map (typeOfStype . argtype) args)
-functionArgNames _ = trace "functionArgNames called with a non-function. This is a bug." undefined 
+functionArgNames _ = bug "functionArgNames called with a non-function"
 
 builtins :: [(String, Type)]
 builtins = [("print", TFun TVoid [TStr]), ("tostring", TFun TStr [TInt])]
@@ -250,4 +252,4 @@ typeCheckProgram_ (td@(S.FnDef pos _ _ _ block):b) env ((TFun rettype _):r) = do
 typeCheckProgram_ (S.Global _ _ _:b) env (_:t) = typeCheckProgram_ b env t
 
 -- Gdyby tylko mieć typy zależne, to bym nie musiał tego pisać.
-typeCheckProgram_ _ _ _ = undefined
+typeCheckProgram_ x y z = bug $ "typecheckprogram_ " ++ show (x, y, z)
