@@ -6,6 +6,7 @@ import ParCerber (myLexer, pProgram)
 import qualified Interpreter
 import qualified TypeChecker
 import Control.Monad.Reader
+import System.IO
 
 main :: IO ()
 main = do
@@ -17,9 +18,9 @@ main = do
 run :: String -> IO ()
 run text = do
     case pProgram $ myLexer text of
-        Left str -> putStrLn str
+        Left str -> hPutStrLn stderr str
         Right prog -> 
             case runExcept $ TypeChecker.typeCheckProgram prog of
-                Left err -> putStrLn $ "type error failure: " ++ err
+                Left err -> hPutStrLn stderr $ "type error failure: " ++ err
                 Right _ -> Interpreter.runProg prog
         

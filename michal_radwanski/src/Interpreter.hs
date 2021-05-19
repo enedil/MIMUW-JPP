@@ -6,6 +6,7 @@ import Control.Monad.Except
 import Control.Monad.State
 import qualified Control.Monad.Fail(MonadFail, fail)
 import Control.Monad.Reader(MonadReader, ReaderT, runReaderT, local, ask, asks)
+import System.IO
 
 import Data.Maybe
 import qualified Data.Map as M
@@ -274,5 +275,5 @@ runProg :: S.Program -> IO ()
 runProg prog = do
     ret <- runInterpreter (makeInterpreter prog) 
     case ret of
-        Left err -> putStrLn $ "runtime error: " ++ err
+        Left err -> hPutStrLn stderr $ "runtime error: " ++ err
         Right _ -> return ()
