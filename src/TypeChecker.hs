@@ -56,15 +56,18 @@ typeShow (TTuple elems) = "tuple<" ++ (intercalate "," $ map typeShow elems) ++ 
 typeOf :: S.Expr -> TypeEnv -> Either String Type
 typeOf e = runReader (runExceptT $ typeOf_ e)
 
-expecttype :: Type -> Type -> Type -> String -> TypeCheckerMonad Type
-expecttype expected input rettype err = if expected == input then return rettype else throwE err
-expecttype2 :: Type -> Type -> Type -> Type -> String -> TypeCheckerMonad Type
-expecttype2 expected input1 input2 rettype err = if expected == input1 && expected == input2 then return rettype else throwE err
-checkBinaryOp :: S.Expr -> S.Expr -> Type -> Type -> String -> TypeCheckerMonad Type
-checkBinaryOp e1 e2 expected rettype msg = do
+expecttype :: Pos -> Type -> Type -> Type -> String -> TypeCheckerMonad Type
+expecttype pos expected input rettype err = if expected == input then return rettype else formatError pos err
+expecttype2 :: Pos -> Type -> Type -> Type -> Type -> String -> TypeCheckerMonad Type
+expecttype2 pos expected input1 input2 rettype err = 
+    if expected == input1 && expected == input2
+    then return rettype
+    else formatError pos err
+checkBinaryOp :: Pos -> S.Expr -> S.Expr -> Type -> Type -> String -> TypeCheckerMonad Type
+checkBinaryOp pos e1 e2 expected rettype msg = do
     t1 <- typeOf' e1
     t2 <- typeOf' e2
-    expecttype2 expected t1 t2 rettype $ msg ++ typeShow t1 ++ " and " ++ typeShow t2
+    expecttype2 pos expected t1 t2 rettype $ msg ++ typeShow t1 ++ " and " ++ typeShow t2
 
 typeOf' :: S.Expr -> TypeCheckerMonad Type
 typeOf' x = trace ("expr=" ++ show x) $ typeOf_ x
@@ -80,17 +83,17 @@ typeOf_ (S.ELitInt _ _) = return TInt
 typeOf_ (S.ELitTrue _) = return TBool 
 typeOf_ (S.ELitFalse _) = return TBool
 typeOf_ (S.EString _ _) = return TStr
-typeOf_ (S.Neg _ e_in) = do
+typeOf_ (S.Neg p e_in) = do
     type_in <- typeOf' e_in
-    expecttype TInt type_in TInt ("cannot negate: " ++ typeShow type_in)
-typeOf_ (S.Not _ e_in) = do
+    expecttype p TInt type_in TInt ("cannot negate: " ++ typeShow type_in)
+typeOf_ (S.Not p e_in) = do
     type_in <- typeOf' e_in
-    expecttype TBool type_in TBool ("cannot invert: " ++ typeShow type_in)
-typeOf_ (S.EMul _ e1 _ e2) = checkBinaryOp e1 e2 TInt TInt "cannot multiply/divide: "
-typeOf_ (S.EAdd _ e1 _ e2) = checkBinaryOp e1 e2 TInt TInt "cannot add/subtract: "
-typeOf_ (S.ERel _ e1 _ e2) = checkBinaryOp e1 e2 TInt TBool "cannot compare: "
-typeOf_ (S.EAnd _ e1 e2) = checkBinaryOp e1 e2 TBool TBool "cannot and: "
-typeOf_ (S.EOr _ e1 e2) = checkBinaryOp e1 e2 TBool TBool "cannot or: "
+    expecttype p TBool type_in TBool ("cannot invert: " ++ typeShow type_in)
+typeOf_ (S.EMul p e1 _ e2) = checkBinaryOp p e1 e2 TInt TInt "cannot multiply/divide: "
+typeOf_ (S.EAdd p e1 _ e2) = checkBinaryOp p e1 e2 TInt TInt "cannot add/subtract: "
+typeOf_ (S.ERel p e1 _ e2) = checkBinaryOp p e1 e2 TInt TBool "cannot compare: "
+typeOf_ (S.EAnd p e1 e2) = checkBinaryOp p e1 e2 TBool TBool "cannot and: "
+typeOf_ (S.EOr p e1 e2) = checkBinaryOp p e1 e2 TBool TBool "cannot or: "
 typeOf_ (S.ETuple _ exprs) = do
     types <- mapM typeOf' exprs
     return $ TTuple types
@@ -120,19 +123,20 @@ getdeclarations bl@(S.BBlock _ declarations) env =
         decltoass x = [x] 
         decltoenv :: TypeEnv -> S.Stmt -> Except String TypeEnv
         decltoenv e (S.Decl _ type_ items) = 
-            case foldM_ (\_ _ -> return ()) () [typeOf expr env | S.Init _ (S.Ident _) expr <- items] of
+            case sequence [typeOf expr env | S.Init _ (S.Ident _) expr <- items] of
                 Left err -> throwE err
-                _ -> return $ M.union e (M.fromList $ getvars (typeOfStype type_) items)
+                _ -> let u = M.union e (M.fromList $ getvars (typeOfStype type_) items) in
+                        if M.size u == length items then return u else throwE "redeclaration of local variable"
         decltoenv _ _ = undefined
         getvars :: Type -> [S.Item] -> [(String, Type)]
         getvars type_ items = [(ident, type_) | S.Init _ (S.Ident ident) _ <- items] ++ [(ident, type_) | S.NoInit _ (S.Ident ident) <- items]
 
 typeCheckStmt :: S.Stmt -> TypeCheckerMonad ()
-typeCheckStmt (S.BStmt _ bl@(S.BBlock _ _)) = do
+typeCheckStmt (S.BStmt p bl@(S.BBlock _ _)) = do
     env <- ask
     case runExcept $ getdeclarations bl env of
         Right (env', S.BBlock _ l') -> local (const env') (f l')
-        Left err -> throwE err
+        Left err -> formatError p err
     where
         f [] = return ()
         f (a:b) = typeCheckStmt a >> f b
@@ -199,9 +203,7 @@ typeCheckStmt st@(S.MAss _ e1 e2) = do
         (Right t1, Right t2) -> if t1 == t2 then return () else formatError (S.hasPosition st) "types from := assignment do not match"
         (Left err, _) -> formatError (S.hasPosition st) err
         (_, Left err) -> formatError (S.hasPosition st) err
-
-
-typeCheckStmt xd = formatError Nothing $ "ajja: " ++ show xd
+typeCheckStmt arg = trace ("bug: typeCheckProgram called with arg=" ++ show arg) undefined
 
 checkIsInLoop :: S.Stmt -> TypeCheckerMonad ()
 checkIsInLoop st = do
@@ -210,7 +212,6 @@ checkIsInLoop st = do
         Just _ -> return ()
         _ -> formatError (S.hasPosition st) "break/continue not inside loop"
     
---typeCheckStmt _ = return ()
 argtype :: S.Arg -> S.Type
 argtype (S.VarArg _ t _) = t
 argtype (S.RefArg _ t _) = t
@@ -223,6 +224,7 @@ parseTopLevelSig (S.FnDef _ rettype (S.Ident ident) args _) = (ident, TFun (type
 parseTopLevelSig (S.Global _ type_ (S.Ident ident)) = (ident, typeOfStype type_)
 functionArgNames :: S.TopDef -> [(String, Type)]
 functionArgNames (S.FnDef _ _ _ args _) = zip (map argname args) (map (typeOfStype . argtype) args)
+functionArgNames _ = trace "functionArgNames called with a non-function. This is a bug." undefined 
 
 builtins :: [(String, Type)]
 builtins = [("print", TFun TVoid [TStr]), ("tostring", TFun TStr [TInt])]
