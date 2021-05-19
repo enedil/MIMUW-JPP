@@ -123,11 +123,11 @@ getdeclarations bl@(S.BBlock _ declarations) env =
         decltoass x = [x] 
         decltoenv :: TypeEnv -> S.Stmt -> Except String TypeEnv
         decltoenv e (S.Decl _ type_ items) = 
-            case sequence [typeOf expr env | S.Init _ (S.Ident _) expr <- items] of
+            case sequence [typeOf expr e | S.Init _ (S.Ident _) expr <- items] of
                 Left err -> throwE err
                 _ -> let u = M.fromList $ getvars (typeOfStype type_) items in
                         if trace ("envs: " ++ show u ++ " -- " ++ show items) (M.size u == length items) 
-                        then return (M.union e u)
+                        then return $ traceShow (M.union e u) (M.union e u)
                         else throwE "redeclaration of local variable"
         decltoenv e st = bug $ "decltoenv called with unexpected parameters " ++ show e ++ ", " ++ show st
         getvars :: Type -> [S.Item] -> [(String, Type)]
