@@ -17,7 +17,7 @@ X  12 (4) (statyczne typowanie)
   14 (1) (rekordy/tablice/listy)
 X  15 (2) (krotki z przypisaniem)
 X  16 (1) (break, continue)
-X  17 (4) (funkcje wyższego rzędu, anonimowe, domknięcia)
-X  18 (3) (generatory)
+  17 (4) (funkcje wyższego rzędu, anonimowe, domknięcia)
+  18 (3) (generatory)
 
-Razem: 30 (34?)
+Razem: 27
