@@ -8,7 +8,7 @@ import Control.Monad.Trans.Except
 --import Control.Monad.Except
 --import Control.Monad.Fail
 import qualified Data.Map as M
-import Data.List(intercalate)
+import Data.List(intercalate, sort)
 import qualified AbsCerber as S
 import Tracing
 
@@ -39,8 +39,7 @@ typeOfStype (S.Tuple _ elems) = TTuple (map typeOfStype elems)
 typeOfStype x = bug $ show x
 
 formatError :: forall a. Pos -> String -> TypeCheckerMonad a
-formatError (Just (line, col)) arg = throwE $ show line ++ ":" ++ show col ++ ": " ++ arg
-formatError Nothing arg = throwE $ "(unknown): " ++ arg
+formatError pos arg = throwE $ posShow pos ++ ": " ++ arg
 
 cmptypes :: Type -> Type -> Pos -> String -> TypeCheckerMonad ()
 cmptypes t1 t2 pos msg = if t1 == t2 then return () else formatError pos msg
@@ -48,10 +47,14 @@ cmptypes t1 t2 pos msg = if t1 == t2 then return () else formatError pos msg
 typeShow :: Type -> String
 typeShow TInt = "int"
 typeShow TStr = "str"
-typeShow TBool = "bool"
+typeShow TBool = "boolean"
 typeShow TVoid = "void"
 typeShow (TFun ret args) = "function<" ++ (intercalate "," $ map typeShow (ret: args)) ++ ">"
 typeShow (TTuple elems) = "tuple<" ++ (intercalate "," $ map typeShow elems) ++ ">"
+
+posShow :: Pos -> String
+posShow Nothing = "(unknown)"
+posShow (Just (line, col)) = show line ++ ":" ++ show col
 
 typeOf :: S.Expr -> TypeEnv -> Either String Type
 typeOf e = runReader (runExceptT $ typeOf_ e)
@@ -101,10 +104,10 @@ typeOf_ (S.EApp _ fun args) = do
     fun_type <- typeOf' fun 
     real_arg_types <- mapM typeOf_ args
     case fun_type of
-        TFun ret_type arg_types -> 
+        f@(TFun ret_type arg_types) -> 
             if real_arg_types == arg_types 
             then return ret_type 
-            else throwE $ "cannot call: " ++ show fun ++ " with " ++ (intercalate ", " $ map show real_arg_types)
+            else throwE $ "cannot call: " ++ show f ++ " with " ++ (intercalate ", " $ map show real_arg_types)
         _ -> throwE $ "not callable:" ++ show fun
 
 
@@ -126,9 +129,9 @@ getdeclarations bl@(S.BBlock _ declarations) env =
             case sequence [typeOf expr e | S.Init _ (S.Ident _) expr <- items] of
                 Left err -> throwE err
                 _ -> let u = M.fromList $ getvars (typeOfStype type_) items in
-                        if trace ("envs: " ++ show u ++ " -- " ++ show items) (M.size u == length items) 
+                        if trace ("envs: " ++ show (e, u, items)) (M.size u == length items) && (M.null $ M.intersection e u)
                         then return $ traceShow (M.union e u) (M.union e u)
-                        else throwE "redeclaration of local variable"
+                        else throwE "redeclaration of local variable in block"
         decltoenv e st = bug $ "decltoenv called with unexpected parameters " ++ show e ++ ", " ++ show st
         getvars :: Type -> [S.Item] -> [(String, Type)]
         getvars type_ items = [(ident, type_) | S.Init _ (S.Ident ident) _ <- items] ++ [(ident, type_) | S.NoInit _ (S.Ident ident) <- items]
@@ -170,7 +173,7 @@ typeCheckStmt st@(S.Cond _ e s) = do
     env <- ask
     case typeOf e env of
         Right TBool -> return ()
-        Right _ -> formatError (S.hasPosition st) "condition is not bool"
+        Right _ -> formatError (S.hasPosition st) "condition is not boolean"
         Left err -> formatError (S.hasPosition st) err
     typeCheckStmt s
 
@@ -178,7 +181,7 @@ typeCheckStmt st@(S.CondElse _ e s1 s2) = do
     env <- ask
     case typeOf e env of
         Right TBool -> return ()
-        Right _ -> formatError (S.hasPosition st) "condition is not bool"
+        Right _ -> formatError (S.hasPosition st) "condition is not boolean"
         Left err-> formatError (S.hasPosition st) err
     typeCheckStmt s1
     typeCheckStmt s2
@@ -193,7 +196,7 @@ typeCheckStmt st@(S.While _ e s) = do
     env <- ask
     case typeOf e env of
         Right TBool -> return ()
-        Right _ -> formatError (S.hasPosition st) "condition is not bool"
+        Right _ -> formatError (S.hasPosition st) "condition is not boolean"
         Left err -> formatError (S.hasPosition st) err
     local (M.insert inLoopRegister TBool) (typeCheckStmt s)
 
@@ -202,10 +205,14 @@ typeCheckStmt st@(S.Continue _) = checkIsInLoop st
 typeCheckStmt st@(S.MAss _ e1 e2) = do
     env <- ask
     case (typeOf e1 env, typeOf e2 env) of
-        (Right t1, Right t2) -> if t1 == t2 then return () else formatError (S.hasPosition st) "types from := assignment do not match"
+        (Right t1, Right t2) ->
+            if t1 == t2
+            then return () 
+            else formatError (S.hasPosition st) $ "types from := assignment do not match: " ++ show t1 ++ " != " ++ show t2
         (Left err, _) -> formatError (S.hasPosition st) err
         (_, Left err) -> formatError (S.hasPosition st) err
-typeCheckStmt arg = bug $ "typeCheckProgram called with arg=" ++ show arg
+typeCheckStmt st@(S.Empty _) = return ()
+typeCheckStmt arg = bug $ "typeCheckStmt called with arg=" ++ show arg
 
 checkIsInLoop :: S.Stmt -> TypeCheckerMonad ()
 checkIsInLoop st = do
@@ -221,25 +228,34 @@ argname :: S.Arg -> String
 argname (S.VarArg _ _ (S.Ident i)) = i
 argname (S.RefArg _ _ (S.Ident i)) = i
 
-parseTopLevelSig :: S.TopDef -> (String, Type)
-parseTopLevelSig (S.FnDef _ rettype (S.Ident ident) args _) = (ident, TFun (typeOfStype rettype) (map (typeOfStype . argtype) args))
-parseTopLevelSig (S.Global _ type_ (S.Ident ident)) = (ident, typeOfStype type_)
+parseTopLevelSig :: S.TopDef -> (String, Type, Pos)
+parseTopLevelSig (S.FnDef pos rettype (S.Ident ident) args _) = (ident, TFun (typeOfStype rettype) (map (typeOfStype . argtype) args), pos)
+parseTopLevelSig (S.Global pos type_ (S.Ident ident)) = (ident, typeOfStype type_, pos)
 functionArgNames :: S.TopDef -> [(String, Type)]
 functionArgNames (S.FnDef _ _ _ args _) = zip (map argname args) (map (typeOfStype . argtype) args)
 functionArgNames _ = bug "functionArgNames called with a non-function"
 
-builtins :: [(String, Type)]
-builtins = [("print", TFun TVoid [TStr]), ("tostring", TFun TStr [TInt])]
+builtins :: [(String, Type, Pos)]
+builtins = [("print", TFun TVoid [TStr], Nothing), ("tostring", TFun TStr [TInt], Nothing)]
+
+makeSigMap :: [(String, Type, Pos)] -> Either String (M.Map String Type)
+makeSigMap l = f l (return M.empty) where
+    f [] x = x
+    f ((ident, t, pos):b) x = do
+        v <- x
+        if M.member ident v
+        then Left $ "redefinition of " ++ ident ++ " at " ++ posShow pos
+        else f b (return $ M.insert ident t v)
 
 typeCheckProgram :: S.Program -> Except String ()
 typeCheckProgram (S.PProgram _ fns) = do
     let sigs = map parseTopLevelSig fns in
-        let defs = M.fromList $ builtins ++ sigs in
-            if M.lookup mainFunction defs /= Just (TFun TVoid [])
-            then throwE "wrong main signature (or lack thereof)"
-            else if M.size defs /= length (builtins ++ sigs)
-            then throwE "top level redefinition"
-            else typeCheckProgram_ fns defs (map snd sigs)
+        case makeSigMap $ builtins ++ sigs of
+            Left err -> throwE err
+            Right defs ->
+                if M.lookup mainFunction defs /= Just (TFun TVoid [])
+                then throwE "wrong main signature (or lack thereof)"
+                else typeCheckProgram_ fns defs (map (\(_, x, _) -> x) sigs)
 
 
 typeCheckProgram_ :: [S.TopDef] -> TypeEnv -> [Type] -> Except String ()

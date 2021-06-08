@@ -37,7 +37,7 @@ separator nonempty Item "," ;
 
 Ass.       Stmt ::= Ident "=" Expr  ";" ;
 
-MAss.      Stmt ::= Expr7 ":=" Expr ";" ;
+MAss.      Stmt ::= Expr ":=" Expr ";" ;
 
 
 Ret.       Stmt ::= "return" Expr ";" ;

@@ -148,7 +148,7 @@ instance Print (AbsCerber.Stmt' a) where
     AbsCerber.BStmt _ block -> prPrec i 0 (concatD [prt 0 block])
     AbsCerber.Decl _ type_ items -> prPrec i 0 (concatD [prt 0 type_, prt 0 items, doc (showString ";")])
     AbsCerber.Ass _ id_ expr -> prPrec i 0 (concatD [prt 0 id_, doc (showString "="), prt 0 expr, doc (showString ";")])
-    AbsCerber.MAss _ expr1 expr2 -> prPrec i 0 (concatD [prt 7 expr1, doc (showString ":="), prt 0 expr2, doc (showString ";")])
+    AbsCerber.MAss _ expr1 expr2 -> prPrec i 0 (concatD [prt 0 expr1, doc (showString ":="), prt 0 expr2, doc (showString ";")])
     AbsCerber.Ret _ expr -> prPrec i 0 (concatD [doc (showString "return"), prt 0 expr, doc (showString ";")])
     AbsCerber.VRet _ -> prPrec i 0 (concatD [doc (showString "return"), doc (showString ";")])
     AbsCerber.Cond _ expr stmt -> prPrec i 0 (concatD [doc (showString "if"), doc (showString "("), prt 0 expr, doc (showString ")"), prt 0 stmt])

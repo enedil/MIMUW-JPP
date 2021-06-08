@@ -16,7 +16,6 @@ import Tracing
 import qualified AbsCerber as S
 import qualified TypeChecker as TC
 
-
 type Loc = Int
 type Env = M.Map String Loc
 type Pos = TC.Pos
@@ -39,13 +38,13 @@ extractLoc name = do
         Just x -> return x
         Nothing -> fail $ "cannot extract name (this is a bug):" ++ name
 
-extractVal :: String -> InterpreterM Value
-extractVal ident = do
+extractVal :: Pos -> String -> InterpreterM Value
+extractVal pos ident = do
     l <- extractLoc ident
     v <- gets $ M.lookup l . store
     case v of
         Just val -> return val
-        Nothing -> fail $ "value not in store: " ++ show ident
+        Nothing -> fail $ TC.posShow pos ++ ": value not in store: " ++ show ident
 
 newtype InterpreterM a = InterpreterM {
   runInterpreterM :: ExceptT String (ReaderT Env (StateT IState IO)) a
@@ -55,8 +54,7 @@ instance Control.Monad.Fail.MonadFail InterpreterM where
   fail = throwError
 
 formatError :: forall a. Pos -> String -> InterpreterM a
-formatError (Just (line, col)) arg = fail $ show line ++ ":" ++ show col ++ ": " ++ arg
-formatError Nothing arg = fail $ "(unknown): " ++ arg
+formatError pos arg = fail $ TC.posShow pos ++ ": " ++ arg
 
 data Arg = ValArg Value | RefArg Value deriving (Show)
 data Fun = FVal (Value -> InterpreterM Fun) | FRef (Loc -> InterpreterM Fun) | FBottom (InterpreterM Value) 
@@ -154,7 +152,7 @@ exec (S.BStmt _ (S.BBlock _ stmts): rest) = do
         Nothing -> exec rest
 exec (S.MAss pos e1 e2: rest) = do
         tupRight <- eval e2
-        assignTup e1 tupRight
+        assignTup e1 (trace ("right:" ++ show tupRight) tupRight)
         exec rest
     where
         assignTup :: S.Expr -> Value -> InterpreterM ()
@@ -174,7 +172,7 @@ eval (S.ELitInt _ i) = return $ IntV (fromInteger i)
 eval (S.ELitTrue _) = return $ BoolV True
 eval (S.ELitFalse _) = return $ BoolV False
 eval (S.EString _ s) = return $ StringV s
-eval (S.EVar _ (S.Ident ident)) = extractVal ident
+eval (S.EVar pos (S.Ident ident)) = extractVal pos ident
 eval (S.Neg _ e) = IntV <$> ((-) 0 . vint <$> eval e)
 eval (S.Not _ e) = BoolV <$> (not . vbool <$> eval e)
 eval (S.EMul pos e1 op e2) = do
@@ -260,7 +258,7 @@ makeInterpreter (S.PProgram _ topdefs) = do
    where
     f :: [(Loc, InterpreterM Fun)] -> InterpreterM ()
     f [] = do
-        FunV (FBottom main) <- extractVal "main"
+        FunV (FBottom main) <- extractVal Nothing "main"
         main >> return ()
     f ((l, fn):b) = do
         env <- ask
