@@ -113,7 +113,7 @@ Stmt : ';' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.Empty
      | Block { (fst $1, AbsCerber.BStmt (fst $1) (snd $1)) }
      | Type ListItem ';' { (fst $1, AbsCerber.Decl (fst $1) (snd $1) (snd $2)) }
      | Ident '=' Expr ';' { (fst $1, AbsCerber.Ass (fst $1) (snd $1) (snd $3)) }
-     | Expr7 ':=' Expr ';' { (fst $1, AbsCerber.MAss (fst $1) (snd $1) (snd $3)) }
+     | Expr ':=' Expr ';' { (fst $1, AbsCerber.MAss (fst $1) (snd $1) (snd $3)) }
      | 'return' Expr ';' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.Ret (uncurry AbsCerber.BNFC'Position (tokenLineCol $1)) (snd $2)) }
      | 'return' ';' { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.VRet (uncurry AbsCerber.BNFC'Position (tokenLineCol $1))) }
      | 'if' '(' Expr ')' Stmt { (uncurry AbsCerber.BNFC'Position (tokenLineCol $1), AbsCerber.Cond (uncurry AbsCerber.BNFC'Position (tokenLineCol $1)) (snd $3) (snd $5)) }

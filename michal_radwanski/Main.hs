@@ -13,7 +13,8 @@ main = do
     args <- System.Environment.getArgs
     case args of
         [path] -> readFile path >>= run
-        _ -> die "just put a file name as argument"
+        [] -> putStrLn "WARNING: no command line argument, reading from STDIN." >> getContents >>= run
+        _ -> die "Put a file name as argument, or none to use STDIN."
 
 run :: String -> IO ()
 run text = do
